@@ -33,12 +33,31 @@ python multi_agent_codex.py \
 ```
 
 ## Wichtige Flags
+### multi_agent_codex.py
 | Flag | Beschreibung |
 |-----|--------------|
-| --task | Zentrale Aufgabe |
-| --apply | Wendet Diffs automatisch an |
-| --timeout | Timeout pro Agent |
-| --ignore-fail | Ignoriert Agent-Fehler |
+| --task | Zentrale Aufgabe (Pflicht) |
+| --dir | Arbeitsverzeichnis/Repo-Root (default: current dir) |
+| --timeout | Timeout pro Agent in Sekunden |
+| --apply | Versucht Diffs aus Agent-Outputs auf Workspace anzuwenden |
+| --fail-fast | Bei Patch-Fehler sofort abbrechen (nur mit --apply) |
+| --ignore-fail | Exitcode immer 0, auch wenn Agenten fehlschlagen |
+| --max-files | Max Dateien im Snapshot |
+| --max-file-bytes | Max Bytes pro Datei im Snapshot |
+
+### multi_role_agent_creator.py
+| Flag | Beschreibung |
+|-----|--------------|
+| --description | Beschreibung fuer die Rolle (Pflicht) |
+| --id | Rollen-ID (default: aus Beschreibung generiert) |
+| --name | Anzeigename (default: id) |
+| --role | Rollenlabel (default: name) |
+| --title | Titel im Prompt (default: role) |
+| --context | Zus. Platzhalter (key oder key:Label) |
+| --apply-diff | Markiert Rolle als Diff-Lieferant |
+| --insert-after | Fuegt Rolle nach einer Rolle ein |
+| --config | Pfad zu `config/main.json` |
+| --force | Ueberschreibt vorhandene Rolle/Datei |
 
 ## Struktur
 ```text
@@ -50,6 +69,29 @@ python multi_agent_codex.py \
       ├── reviewer.md
       └── integrator.md
 ```
+
+## JSON Konfiguration
+### Hauptdatei: `config/main.json`
+- `system_rules`: System-Regeln fuer alle Agenten.
+- `final_role_id`: Rolle, deren Output als finale Kurz-Zusammenfassung genutzt wird.
+- `summary_max_chars` / `final_summary_max_chars`: Laengen fuer Zusammenfassungen.
+- `codex`: `env_var` und `default_cmd` fuer den Codex CLI Aufruf.
+- `paths`: Run-Ordner und Dateinamen fuer Snapshot/Apply-Log.
+- `roles`: Liste der Rollen mit `id`, `file` und optional `apply_diff`.
+- `snapshot`: Steuerung des Workspace-Snapshots (Skip-Listen, Header, Format).
+- `agent_output`: Header-Strings fuer Agent-Output Dateien.
+- `messages`: Konsolen-Ausgaben und Fehlermeldungen.
+- `diff_messages`: Meldungen fuer das Patch-Apply.
+- `cli`: Beschreibung und Hilfe-Texte fuer argparse.
+
+### Rollen: `config/roles/*.json`
+Jede Rolle ist eine eigene JSON-Datei mit:
+- `id`: Rollen-ID (muss zu `config/main.json` passen).
+- `name`: Name des Agents (default: id).
+- `role`: Rollenbezeichnung fuer die Ausgabe.
+- `prompt_template`: Prompt-Template mit Platzhaltern wie `{task}`, `{snapshot}`,
+  `{architect_summary}`, `{implementer_summary}`, `{tester_summary}` oder
+  `{<rolle>_output}`.
 
 ## Sicherheit
 - Standardmäßig **Dry-Run**
