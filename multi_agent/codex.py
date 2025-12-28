@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Dict, List, Tuple
 
 from .models import AgentResult, AgentSpec
-from .utils import write_text
+from .utils import get_status_text, write_text
 
 
 class CodexClient:
@@ -38,9 +38,15 @@ class CodexClient:
 
 
 class AgentExecutor:
-    def __init__(self, client: CodexClient, agent_output_cfg: Dict[str, str]) -> None:
+    def __init__(
+        self,
+        client: CodexClient,
+        agent_output_cfg: Dict[str, str],
+        messages: Dict[str, str],
+    ) -> None:
         self._client = client
         self._agent_output_cfg = agent_output_cfg
+        self._messages = messages
 
     async def run_agent(
         self,
@@ -51,9 +57,10 @@ class AgentExecutor:
     ) -> AgentResult:
         print(f"[Agent-Start] {agent.name} ({agent.role})")
         rc, out, err = await self._client.run(prompt, workdir=workdir)
+        status_text = get_status_text(rc, out, self._messages)
         content = (
             f"{self._agent_output_cfg['agent_header'].format(name=agent.name, role=agent.role)}\n\n"
-            f"{self._agent_output_cfg['returncode_header']}\n{rc}\n\n"
+            f"{self._agent_output_cfg['returncode_header']}\n{rc} ({status_text})\n\n"
             f"{self._agent_output_cfg['stdout_header']}\n{out}\n\n"
             f"{self._agent_output_cfg['stderr_header']}\n{err}\n"
         )

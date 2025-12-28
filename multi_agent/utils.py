@@ -50,3 +50,11 @@ def format_prompt(template: str, context: Dict[str, str], role_id: str, messages
     except KeyError as exc:
         key = exc.args[0] if exc.args else "unknown"
         raise ValueError(messages["error_prompt_missing_key"].format(role_id=role_id, key=key)) from exc
+
+
+def get_status_text(returncode: int, stdout: str, messages: Dict[str, str]) -> str:
+    if returncode != 0:
+        return messages["status_error"]
+    if not (stdout or "").strip():
+        return messages["status_no_output"]
+    return messages["status_ok"]

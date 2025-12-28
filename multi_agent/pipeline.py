@@ -10,7 +10,7 @@ from .diff_applier import BaseDiffApplier, UnifiedDiffApplier
 from .models import AgentResult, AgentSpec, AppConfig
 from .snapshot import BaseSnapshotter, WorkspaceSnapshotter
 from .progress import ProgressReporter
-from .utils import format_prompt, get_codex_cmd, now_stamp, summarize_text, write_text
+from .utils import format_prompt, get_codex_cmd, get_status_text, now_stamp, summarize_text, write_text
 
 
 class Pipeline:
@@ -51,7 +51,7 @@ class Pipeline:
 
         codex_cmd = get_codex_cmd(cfg.codex_env_var, cfg.codex_default_cmd)
         client = CodexClient(codex_cmd, timeout_sec=args.timeout)
-        executor = AgentExecutor(client, cfg.agent_output)
+        executor = AgentExecutor(client, cfg.agent_output, cfg.messages)
 
         context: Dict[str, str] = {
             "task": task,
@@ -123,6 +123,7 @@ class Pipeline:
             line = cfg.messages["status_line"].format(
                 agent_name=res.agent.name,
                 rc=res.returncode,
+                status=get_status_text(res.returncode, res.stdout, cfg.messages),
                 ok=res.ok,
                 out_file=res.out_file.name,
             )
