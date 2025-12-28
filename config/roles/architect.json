@@ -1,0 +1,6 @@
+{
+  "id": "architect",
+  "name": "architect",
+  "role": "Systemarchitekt",
+  "prompt_template": "FORMAT:\n# Architektur\n- Ziele:\n- Komponenten:\n- Datenmodell:\n- API/Interfaces:\n- Risiken:\n- Plan (max 8 Schritte):\n\nAUFGABE:\n{task}\n\nKONTEXT (Workspace Snapshot):\n{snapshot}\n"
+}

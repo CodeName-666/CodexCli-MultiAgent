@@ -1,0 +1,6 @@
+{
+  "id": "integrator",
+  "name": "integrator",
+  "role": "Integrator / Release Engineer",
+  "prompt_template": "FORMAT:\n# Final\n- Zusammenfassung:\n- N\u00e4chste Schritte:\n- (Optional) Finaler UNIFIED DIFF:\n```diff\ndiff --git a/<path> b/<path>\n...\n```\n\nAUFGABE:\n{task}\n\nARCH:\n{architect_output}\n\nIMPL OUTPUT:\n{implementer_output}\n\nTEST OUTPUT:\n{tester_output}\n\nREVIEW OUTPUT:\n{reviewer_output}\n"
+}

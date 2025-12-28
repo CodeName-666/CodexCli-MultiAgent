@@ -1,0 +1,6 @@
+{
+  "id": "implementer",
+  "name": "implementer",
+  "role": "Senior Software Engineer",
+  "prompt_template": "FORMAT:\n# Implementierung\n- Dateien neu/\u00e4ndern (Liste):\n- Entscheidungen:\n- Offene Punkte:\n\nDann liefere einen UNIFIED DIFF (git-style) f\u00fcr alle \u00c4nderungen:\n```diff\ndiff --git a/<path> b/<path>\n...\n```\n\nAUFGABE:\n{task}\n\nARCHITEKTUR (Kurz):\n{architect_summary}\n\nKONTEXT (Workspace Snapshot):\n{snapshot}\n"
+}

@@ -1,0 +1,80 @@
+{
+  "system_rules": "Du bist ein separater Agent in einem Multi-Agent-Workflow, der via Codex CLI ausgef\u00fchrt wird.\n\nWichtige Regeln:\n- Antworte strikt im geforderten FORMAT.\n- Keine unn\u00f6tigen Erkl\u00e4rungen au\u00dferhalb des Formats.\n- Sei pr\u00e4zise, umsetzungsorientiert und konsistent.\n- Wenn du Annahmen triffst, liste sie.\n",
+  "final_role_id": "integrator",
+  "summary_max_chars": 1400,
+  "final_summary_max_chars": 2400,
+  "codex": {
+    "env_var": "CODEX_CMD",
+    "default_cmd": "codex"
+  },
+  "paths": {
+    "run_dir": ".multi_agent_runs",
+    "snapshot_filename": "snapshot.txt",
+    "apply_log_filename": "apply.log"
+  },
+  "roles": [
+    {"id": "architect", "file": "roles/architect.json"},
+    {"id": "implementer", "file": "roles/implementer.json", "apply_diff": true},
+    {"id": "tester", "file": "roles/tester.json", "apply_diff": true},
+    {"id": "reviewer", "file": "roles/reviewer.json", "apply_diff": true},
+    {"id": "integrator", "file": "roles/integrator.json"}
+  ],
+  "snapshot": {
+    "skip_dirs": [".git", "__pycache__", "node_modules", ".venv", "venv", "dist", "build", ".idea", ".pytest_cache"],
+    "skip_exts": [".png", ".jpg", ".jpeg", ".gif", ".pdf", ".zip", ".gz", ".bin", ".exe", ".dll", ".so", ".dylib"],
+    "workspace_header": "WORKSPACE: {root}",
+    "files_header": "FILES:",
+    "content_header": "FILE CONTENT (truncated):",
+    "file_line": "  - {rel} ({size} bytes)",
+    "file_section_header": "--- {rel} ---"
+  },
+  "agent_output": {
+    "agent_header": "## AGENT: {name} ({role})",
+    "returncode_header": "### Returncode",
+    "stdout_header": "### STDOUT",
+    "stderr_header": "### STDERR"
+  },
+  "messages": {
+    "error_task_empty": "Fehler: --task ist leer.",
+    "error_prompt_missing_key": "Fehler: Prompt f\u00fcr Rolle '{role_id}' braucht fehlenden Platzhalter '{key}'.",
+    "run_complete": "=== Multi-Agent Run fertig ===",
+    "workspace_label": "Workspace:  {workspace}",
+    "run_dir_label": "Run-Ordner: {run_dir}",
+    "status_header": "Status:",
+    "status_line": "- {agent_name:<11} rc={rc:<3} ok={ok} -> {out_file}",
+    "patch_apply_header": "Patch Apply:",
+    "integrator_output_header": "Integrator Output (Kurz):",
+    "apply_no_diff": "[{label}] Kein diff gefunden \u2013 \u00fcbersprungen.",
+    "apply_ok": "[{label}] {message}",
+    "apply_error": "[{label}] FEHLER: {message}",
+    "interrupted": "Abgebrochen.",
+    "codex_not_found": "Fehler: Codex CLI nicht gefunden: {error}",
+    "codex_tip": "Tipp: Stelle sicher, dass `codex` im PATH ist oder setze CODEX_CMD."
+  },
+  "diff_messages": {
+    "no_git_header": "Kein 'diff --git' Header im Diff gefunden.",
+    "patch_applied": "Patch angewendet.",
+    "patch_exception": "Patch apply exception: {error}",
+    "delete_file_error": "{rel_path}: konnte Datei nicht l\u00f6schen: {error}",
+    "no_hunks": "{rel_path}: keine Hunks (nichts zu tun).",
+    "context_mismatch": "{rel_path}: Kontext-Mismatch bei Zeile {line}: erwartet '{expected}', got '{got}'",
+    "delete_mismatch": "{rel_path}: Delete-Mismatch bei Zeile {line}: erwartet '{expected}', got '{got}'",
+    "unknown_prefix": "{rel_path}: Unbekanntes Prefix '{prefix}'",
+    "file_deleted": "{rel_path}: gel\u00f6scht.",
+    "file_updated": "{rel_path}: aktualisiert.",
+    "file_created": "{rel_path}: erstellt."
+  },
+  "cli": {
+    "description": "Multi-Agent Orchestrator f\u00fcr Codex CLI (Architect/Implementer/Tester/Reviewer/Integrator).",
+    "args": {
+      "task": {"help": "Gesamtaufgabe / Problemstatement."},
+      "dir": {"help": "Arbeitsverzeichnis/Repo-Root (default: current dir)."},
+      "timeout": {"help": "Timeout pro Agent in Sekunden."},
+      "apply": {"help": "Versucht Diffs aus Agent-Outputs auf Workspace anzuwenden."},
+      "fail_fast": {"help": "Bei Patch-Fehler sofort abbrechen (nur mit --apply)."},
+      "ignore_fail": {"help": "Exitcode immer 0, auch wenn Agenten fehlschlagen."},
+      "max_files": {"help": "Max Dateien im Snapshot."},
+      "max_file_bytes": {"help": "Max Bytes pro Datei im Snapshot."}
+    }
+  }
+}

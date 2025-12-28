@@ -1,0 +1,6 @@
+{
+  "id": "reviewer",
+  "name": "reviewer",
+  "role": "Staff Engineer (Code Reviewer)",
+  "prompt_template": "FORMAT:\n# Review\n- Findings:\n- Risiko/Impact:\n- Empfohlene \u00c4nderungen:\n- Optionaler UNIFIED DIFF mit Fixes:\n```diff\ndiff --git a/<path> b/<path>\n...\n```\n\nAUFGABE:\n{task}\n\nARCH (Kurz):\n{architect_summary}\n\nIMPL (Kurz):\n{implementer_summary}\n\nTESTS (Kurz):\n{tester_summary}\n\nKONTEXT (Workspace Snapshot):\n{snapshot}\n"
+}
