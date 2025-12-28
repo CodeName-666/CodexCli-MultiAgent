@@ -9,6 +9,7 @@ from .codex import AgentExecutor, CodexClient
 from .diff_applier import BaseDiffApplier, UnifiedDiffApplier
 from .models import AgentResult, AgentSpec, AppConfig
 from .snapshot import BaseSnapshotter, WorkspaceSnapshotter
+from .progress import ProgressReporter
 from .utils import format_prompt, get_codex_cmd, now_stamp, summarize_text, write_text
 
 
@@ -33,6 +34,12 @@ class Pipeline:
             print(cfg.messages["error_task_empty"], file=sys.stderr)
             return 2
 
+        apply_roles = [role for role in cfg.roles if role.apply_diff]
+        total_steps = 1 + len(cfg.roles) + (len(apply_roles) if args.apply else 0) + 1
+        reporter = ProgressReporter(total_steps=total_steps)
+        reporter.start(f"Workspace: {workdir} | Run-Ordner: {run_dir}")
+
+        reporter.step("Snapshot", "Workspace wird gescannt", advance=1)
         snapshot = self._snapshotter.build_snapshot(
             workdir,
             cfg.snapshot,
@@ -40,6 +47,7 @@ class Pipeline:
             max_bytes_per_file=args.max_file_bytes,
         )
         write_text(run_dir / str(cfg.paths["snapshot_filename"]), snapshot)
+        reporter.step("Snapshot", "Snapshot gespeichert", advance=0)
 
         codex_cmd = get_codex_cmd(cfg.codex_env_var, cfg.codex_default_cmd)
         client = CodexClient(codex_cmd, timeout_sec=args.timeout)
@@ -53,19 +61,24 @@ class Pipeline:
 
         for role_cfg in cfg.roles:
             agent = AgentSpec(role_cfg.name, role_cfg.role)
+            reporter.step("Prompt-Build", f"Rolle: {role_cfg.id}", advance=0)
             try:
                 prompt_body = format_prompt(role_cfg.prompt_template, context, role_cfg.id, cfg.messages)
             except ValueError as exc:
+                reporter.error(str(exc))
                 print(str(exc), file=sys.stderr)
                 return 2
             prompt = cfg.system_rules + "\n\n" + prompt_body
+            reporter.step("Prompt-Build", f"Rolle: {role_cfg.id}, chars={len(prompt)}", advance=0)
             out_file = run_dir / f"{role_cfg.id}.md"
+            reporter.step("Agent-Lauf", f"Rolle: {role_cfg.id}", advance=1)
             res = await executor.run_agent(
                 agent,
                 prompt,
                 workdir,
                 out_file,
             )
+            reporter.step("Agent-Ende", f"Rolle: {role_cfg.id}, rc={res.returncode}", advance=0)
             results[role_cfg.id] = res
             context[f"{role_cfg.id}_summary"] = summarize_text(res.stdout, max_chars=cfg.summary_max_chars)
             context[f"{role_cfg.id}_output"] = res.stdout
@@ -79,19 +92,25 @@ class Pipeline:
                 res = results.get(role_cfg.id)
                 if not res:
                     continue
+                reporter.step("Diff-Apply", f"Rolle: {role_cfg.id}", advance=1)
                 diff = self._diff_applier.extract_diff(res.stdout)
                 if not diff:
+                    reporter.step("Diff-Apply", f"Rolle: {role_cfg.id}, kein diff", advance=0)
                     apply_log_lines.append(cfg.messages["apply_no_diff"].format(label=role_cfg.id))
                     continue
                 ok, msg = self._diff_applier.apply(workdir, diff, cfg.diff_messages)
                 if ok:
+                    reporter.step("Diff-Apply", f"Rolle: {role_cfg.id}, ok", advance=0)
                     apply_log_lines.append(cfg.messages["apply_ok"].format(label=role_cfg.id, message=msg))
                 else:
+                    reporter.step("Diff-Apply", f"Rolle: {role_cfg.id}, fehler", advance=0)
                     apply_log_lines.append(cfg.messages["apply_error"].format(label=role_cfg.id, message=msg))
                     if args.fail_fast:
+                        reporter.error(f"Diff-Apply abgebrochen: {role_cfg.id}")
                         break
             write_text(run_dir / str(cfg.paths["apply_log_filename"]), "\n".join(apply_log_lines) + "\n")
 
+        reporter.step("Summary", "Ausgaben werden zusammengefasst", advance=1)
         # Console Summary
         print("\n" + cfg.messages["run_complete"])
         print(cfg.messages["workspace_label"].format(workspace=workdir))
@@ -122,9 +141,11 @@ class Pipeline:
             print("")
 
         if args.ignore_fail:
+            reporter.finish("Status ignoriert (ignore-fail)")
             return 0
 
         any_fail = any(not res.ok for res in results.values())
+        reporter.finish("Fertig")
         return 1 if any_fail else 0
 
 

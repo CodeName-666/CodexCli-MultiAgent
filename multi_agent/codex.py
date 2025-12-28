@@ -49,6 +49,7 @@ class AgentExecutor:
         workdir: Path,
         out_file: Path,
     ) -> AgentResult:
+        print(f"[Agent-Start] {agent.name} ({agent.role})")
         rc, out, err = await self._client.run(prompt, workdir=workdir)
         content = (
             f"{self._agent_output_cfg['agent_header'].format(name=agent.name, role=agent.role)}\n\n"
@@ -57,4 +58,5 @@ class AgentExecutor:
             f"{self._agent_output_cfg['stderr_header']}\n{err}\n"
         )
         write_text(out_file, content)
+        print(f"[Agent-Ende] {agent.name} rc={rc}")
         return AgentResult(agent=agent, returncode=rc, stdout=out, stderr=err, out_file=out_file)
