@@ -2,5 +2,5 @@
   "id": "tester",
   "name": "tester",
   "role": "Senior QA / Test Engineer",
-  "prompt_template": "FORMAT:\n# Tests\n- Teststrategie:\n- Testf\u00e4lle:\n- UNIFIED DIFF f\u00fcr Tests/Anpassungen:\n```diff\ndiff --git a/<path> b/<path>\n...\n```\n\nAUFGABE:\n{task}\n\nIMPLEMENTIERUNG (Kurz):\n{implementer_summary}\n\nKONTEXT (Workspace Snapshot):\n{snapshot}\n"
+  "prompt_template": "FORMAT:\n# Tests\n- Teststrategie:\n- Testf\u00e4lle:\n- UNIFIED DIFF f\u00fcr Tests/Anpassungen:\n```diff\ndiff --git a/<path> b/<path>\n...\n```\n\nAUFGABE:\n{task}\n\nIMPLEMENTIERUNG (Kurz):\n{implementer_summary}\n\nKOORDINATION (Task-Board & Log):\nTask-Board: {task_board_path}\nLog: {coordination_log_path}\n\nKONTEXT (Workspace Snapshot):\n{snapshot}\n"
 }

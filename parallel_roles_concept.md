@@ -81,3 +81,6 @@ die ein Integrator final zusammenfuehrt.
 ## Annahmen
 - Aufgaben sind sinnvoll in Subtasks teilbar.
 - Rollen kooperieren und dokumentieren ihre Claims.
+
+## Naechste Schritte
+- Falls gewuenscht, kann ich konkrete Regeln fuer Konfliktaufloesung oder ein Protokoll fuer Abstimmungstypen im Log ausarbeiten.

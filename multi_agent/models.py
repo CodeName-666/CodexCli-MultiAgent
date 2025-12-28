@@ -12,6 +12,7 @@ class RoleConfig:
     role: str
     prompt_template: str
     apply_diff: bool
+    instances: int
 
 
 @dataclasses.dataclass(frozen=True)
@@ -24,6 +25,8 @@ class AppConfig:
     codex_env_var: str
     codex_default_cmd: str
     paths: Dict[str, str]
+    coordination: Dict[str, object]
+    outputs: Dict[str, object]
     snapshot: Dict[str, object]
     agent_output: Dict[str, str]
     messages: Dict[str, str]

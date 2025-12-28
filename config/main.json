@@ -12,15 +12,25 @@
     "snapshot_filename": "snapshot.txt",
     "apply_log_filename": "apply.log"
   },
+  "coordination": {
+    "task_board": ".multi_agent_runs/<run_id>/task_board.json",
+    "channel": ".multi_agent_runs/<run_id>/coordination.log",
+    "lock_mode": "file_lock",
+    "claim_timeout_sec": 300,
+    "lock_timeout_sec": 10
+  },
+  "outputs": {
+    "pattern": "<role>_<instance>.md"
+  },
   "roles": [
-    {"id": "architect", "file": "roles/architect.json"},
-    {"id": "implementer", "file": "roles/implementer.json", "apply_diff": true},
-    {"id": "tester", "file": "roles/tester.json", "apply_diff": true},
-    {"id": "reviewer", "file": "roles/reviewer.json", "apply_diff": true},
-    {"id": "integrator", "file": "roles/integrator.json"}
+    {"id": "architect", "file": "roles/architect.json", "instances": 1},
+    {"id": "implementer", "file": "roles/implementer.json", "apply_diff": true, "instances": 1},
+    {"id": "tester", "file": "roles/tester.json", "apply_diff": true, "instances": 1},
+    {"id": "reviewer", "file": "roles/reviewer.json", "apply_diff": true, "instances": 1},
+    {"id": "integrator", "file": "roles/integrator.json", "instances": 1}
   ],
   "snapshot": {
-    "skip_dirs": [".git", "__pycache__", "node_modules", ".venv", "venv", "dist", "build", ".idea", ".pytest_cache"],
+    "skip_dirs": [".git", "__pycache__", "node_modules", ".venv", "venv", "dist", "build", ".idea", ".pytest_cache", ".multi_agent_runs"],
     "skip_exts": [".png", ".jpg", ".jpeg", ".gif", ".pdf", ".zip", ".gz", ".bin", ".exe", ".dll", ".so", ".dylib"],
     "workspace_header": "WORKSPACE: {root}",
     "files_header": "FILES:",
@@ -37,6 +47,7 @@
   "messages": {
     "error_task_empty": "Fehler: --task ist leer.",
     "error_prompt_missing_key": "Fehler: Prompt f\u00fcr Rolle '{role_id}' braucht fehlenden Platzhalter '{key}'.",
+    "error_apply_roles_unknown": "Fehler: Unbekannte Rollen in --apply-roles: {roles}",
     "run_complete": "=== Multi-Agent Run fertig ===",
     "workspace_label": "Workspace:  {workspace}",
     "run_dir_label": "Run-Ordner: {run_dir}",
@@ -74,6 +85,8 @@
       "dir": {"help": "Arbeitsverzeichnis/Repo-Root (default: current dir)."},
       "timeout": {"help": "Timeout pro Agent in Sekunden."},
       "apply": {"help": "Versucht Diffs aus Agent-Outputs auf Workspace anzuwenden."},
+      "apply_mode": {"help": "Wann Diffs angewendet werden: end (nach allen Rollen) oder role (nach jeder Rolle)."},
+      "apply_roles": {"help": "Welche Rollen angewendet werden sollen (repeatable oder kommasepariert). Default: alle apply_diff-Rollen."},
       "fail_fast": {"help": "Bei Patch-Fehler sofort abbrechen (nur mit --apply)."},
       "ignore_fail": {"help": "Exitcode immer 0, auch wenn Agenten fehlschlagen."},
       "max_files": {"help": "Max Dateien im Snapshot."},

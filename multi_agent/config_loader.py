@@ -23,6 +23,7 @@ def load_role_config(role_entry: Dict[str, object], base_dir: Path) -> RoleConfi
         role=str(data["role"]),
         prompt_template=str(data["prompt_template"]),
         apply_diff=bool(role_entry.get("apply_diff", False)),
+        instances=max(1, int(role_entry.get("instances", 1))),
     )
 
 
@@ -31,6 +32,8 @@ def load_app_config(config_path: Path) -> AppConfig:
     base_dir = config_path.parent
     roles = [load_role_config(role_entry, base_dir) for role_entry in data["roles"]]
     final_role_id = str(data.get("final_role_id") or (roles[-1].id if roles else ""))
+    coordination = data.get("coordination") or {}
+    outputs = data.get("outputs") or {}
     return AppConfig(
         system_rules=str(data["system_rules"]),
         roles=roles,
@@ -40,6 +43,8 @@ def load_app_config(config_path: Path) -> AppConfig:
         codex_env_var=str(data["codex"]["env_var"]),
         codex_default_cmd=str(data["codex"]["default_cmd"]),
         paths=data["paths"],
+        coordination=coordination,
+        outputs=outputs,
         snapshot=data["snapshot"],
         agent_output=data["agent_output"],
         messages=data["messages"],

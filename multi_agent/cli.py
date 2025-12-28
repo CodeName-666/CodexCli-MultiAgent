@@ -19,6 +19,18 @@ def parse_args(cfg, argv: Optional[List[str]] = None) -> argparse.Namespace:
     p.add_argument("--dir", default=".", help=str(args_cfg["dir"]["help"]))
     p.add_argument("--timeout", type=int, default=DEFAULT_TIMEOUT_SEC, help=str(args_cfg["timeout"]["help"]))
     p.add_argument("--apply", action="store_true", help=str(args_cfg["apply"]["help"]))
+    p.add_argument(
+        "--apply-mode",
+        choices=["end", "role"],
+        default="end",
+        help=str(args_cfg["apply_mode"]["help"]),
+    )
+    p.add_argument(
+        "--apply-roles",
+        action="append",
+        default=[],
+        help=str(args_cfg["apply_roles"]["help"]),
+    )
     p.add_argument("--fail-fast", action="store_true", help=str(args_cfg["fail_fast"]["help"]))
     p.add_argument("--ignore-fail", action="store_true", help=str(args_cfg["ignore_fail"]["help"]))
     p.add_argument("--max-files", type=int, default=DEFAULT_MAX_FILES, help=str(args_cfg["max_files"]["help"]))

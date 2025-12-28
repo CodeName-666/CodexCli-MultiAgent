@@ -50,6 +50,8 @@ python multi_agent_codex.py \
 | --dir | Arbeitsverzeichnis/Repo-Root (default: current dir) |
 | --timeout | Timeout pro Agent in Sekunden |
 | --apply | Versucht Diffs aus Agent-Outputs auf Workspace anzuwenden |
+| --apply-mode | Wann Diffs angewendet werden: end (nach allen Rollen) oder role (nach jeder Rolle) |
+| --apply-roles | Welche Rollen angewendet werden (repeatable oder kommasepariert) |
 | --fail-fast | Bei Patch-Fehler sofort abbrechen (nur mit --apply) |
 | --ignore-fail | Exitcode immer 0, auch wenn Agenten fehlschlagen |
 | --max-files | Max Dateien im Snapshot |
@@ -73,11 +75,14 @@ python multi_agent_codex.py \
 ```text
 .multi_agent_runs/
   └── TIMESTAMP/
-      ├── architect.md
-      ├── implementer.md
-      ├── tester.md
-      ├── reviewer.md
-      └── integrator.md
+      ├── task_board.json
+      ├── coordination.log
+      ├── architect_1.md
+      ├── implementer_1.md
+      ├── implementer_2.md
+      ├── tester_1.md
+      ├── reviewer_1.md
+      └── integrator_1.md
 ```
 
 ## JSON Konfiguration
@@ -88,6 +93,8 @@ python multi_agent_codex.py \
 - `summary_max_chars` / `final_summary_max_chars`: Laengen fuer Zusammenfassungen.
 - `codex`: `env_var` und `default_cmd` fuer den Codex CLI Aufruf.
 - `paths`: Run-Ordner und Dateinamen fuer Snapshot/Apply-Log.
+- `coordination`: Task-Board + Log fuer parallele Rolleninstanzen.
+- `outputs`: Dateinamen-Schema fuer Agent-Outputs (z.B. `<role>_<instance>.md`).
 - `roles`: Liste der Rollen mit `id`, `file` und optional `apply_diff`.
 - `snapshot`: Steuerung des Workspace-Snapshots (Skip-Listen, Header, Format).
 - `agent_output`: Header-Strings fuer Agent-Output Dateien.
@@ -103,18 +110,29 @@ Jede Rolle ist eine eigene JSON-Datei mit:
 - `prompt_template`: Prompt-Template mit Platzhaltern wie `{task}`, `{snapshot}`,
   `{architect_summary}`, `{implementer_summary}`, `{tester_summary}` oder
   `{<rolle>_output}`.
+In `config/main.json` pro Rolle zusaetzlich:
+- `instances`: Anzahl paralleler Instanzen (default: 1).
 
 ### Standard-Platzhalter
 In jedem `prompt_template` verfuegbar:
 - `{task}`: Globale Aufgabe.
 - `{snapshot}`: Workspace-Snapshot.
+- `{task_board_path}`: Pfad zum Task-Board (JSON).
+- `{coordination_log_path}`: Pfad zum Koordinations-Log (JSONL).
+- `{role_instance_id}` / `{role_instance}`: Instanz-Infos fuer parallele Rollen.
 - `{<rolle>_summary}`: Kurz-Zusammenfassung der Rolle (z.B. `{architect_summary}`).
 - `{<rolle>_output}`: Voller Output der Rolle (z.B. `{reviewer_output}`).
 
 ## Rollen-Ablauf
 - Rollen laufen sequentiell in der Reihenfolge aus `config/main.json`.
 - `apply_diff: true` markiert Rollen, deren Diffs bei `--apply` angewendet werden.
+- `--apply-mode role` wendet Diffs direkt nach der Rolle an und erzeugt einen frischen Snapshot.
 - Die finale Kurz-Ausgabe stammt von `final_role_id`.
+
+## Parallelisierung pro Rolle
+- `roles[].instances` startet mehrere Instanzen derselben Rolle parallel.
+- Task-Board und Log liegen im Run-Ordner (`task_board.json`, `coordination.log`).
+- Output-Dateien nutzen das Pattern aus `outputs.pattern` (z.B. `<role>_<instance>.md`).
 
 ## Sicherheit
 - Standardmäßig **Dry-Run**
@@ -129,6 +147,11 @@ In jedem `prompt_template` verfuegbar:
 ## Performance-Tuning
 - `--timeout`: Laengere Laufzeit pro Agent erlauben.
 - `--max-files` / `--max-file-bytes`: Snapshot-Groesse begrenzen.
+
+## Neuere Updates
+- `--apply-mode` und `--apply-roles` geben Kontrolle ueber Zeitpunkt und Auswahl der Patch-Anwendung.
+- Status-Ausgabe enthaelt jetzt einen lesbaren Text (`OK`, `KEIN_BEITRAG`, `FEHLER`).
+- Snapshots ignorieren `.multi_agent_runs`, um Kontextgroesse zu reduzieren.
 
 ## Beispielrolle
 Beispiel fuer eine neue Rolle in `config/roles/qa_guard.json`:
