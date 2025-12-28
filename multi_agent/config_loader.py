@@ -33,6 +33,7 @@ def load_role_config(
     timeout_sec = role_entry.get("timeout_sec", defaults.get("timeout_sec"))
     max_output_chars = role_entry.get("max_output_chars", defaults.get("max_output_chars"))
     max_prompt_chars = role_entry.get("max_prompt_chars", defaults.get("max_prompt_chars"))
+    max_prompt_tokens = role_entry.get("max_prompt_tokens", defaults.get("max_prompt_tokens"))
     retries = role_entry.get("retries", defaults.get("retries", 0))
     return RoleConfig(
         id=role_id,
@@ -45,8 +46,10 @@ def load_role_config(
         timeout_sec=int(timeout_sec) if timeout_sec is not None else None,
         max_output_chars=int(max_output_chars) if max_output_chars is not None else None,
         max_prompt_chars=int(max_prompt_chars) if max_prompt_chars is not None else None,
+        max_prompt_tokens=int(max_prompt_tokens) if max_prompt_tokens is not None else None,
         retries=max(0, int(retries)),
         codex_cmd=str(role_entry.get("codex_cmd")) if role_entry.get("codex_cmd") else None,
+        model=str(role_entry.get("model")) if role_entry.get("model") else None,
         expected_sections=_coerce_str_list(role_entry.get("expected_sections")),
         run_if_review_critical=bool(role_entry.get("run_if_review_critical", False)),
     )
@@ -77,6 +80,7 @@ def load_app_config(config_path: Path) -> AppConfig:
         diff_messages=data["diff_messages"],
         cli=data["cli"],
         role_defaults=role_defaults,
+        prompt_limits=data.get("prompt_limits") or {},
         diff_safety=data.get("diff_safety") or {},
         diff_apply=data.get("diff_apply") or {},
         logging=data.get("logging") or {},

@@ -17,10 +17,12 @@ class RoleConfig:
     timeout_sec: int | None
     retries: int
     max_prompt_chars: int | None
+    max_prompt_tokens: int | None
     max_output_chars: int | None
     expected_sections: List[str]
     run_if_review_critical: bool
     codex_cmd: str | None
+    model: str | None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -41,6 +43,7 @@ class AppConfig:
     diff_messages: Dict[str, str]
     cli: Dict[str, object]
     role_defaults: Dict[str, object]
+    prompt_limits: Dict[str, object]
     diff_safety: Dict[str, object]
     diff_apply: Dict[str, object]
     logging: Dict[str, object]

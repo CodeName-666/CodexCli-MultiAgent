@@ -34,6 +34,7 @@
       }
     },
     "paths": {"type": "object"},
+    "prompt_limits": {"type": "object"},
     "snapshot": {"type": "object"},
     "agent_output": {"type": "object"},
     "messages": {"type": "object"},

@@ -17,6 +17,8 @@ from .run_logger import JsonRunLogger
 from .snapshot import BaseSnapshotter, WorkspaceSnapshotter
 from .utils import (
     extract_error_reason,
+    detect_model_from_cmd,
+    estimate_tokens,
     format_prompt,
     get_codex_cmd,
     get_status_text,
@@ -189,7 +191,7 @@ class Pipeline:
                     local_context["role_instance_id"] = str(instance_id)
                     local_context["role_instance"] = instance_label
     
-                    prompt, prompt_chars, truncated = self._build_prompt(
+                    prompt, prompt_chars, truncated, prompt_tokens, max_prompt_tokens = self._build_prompt(
                         role_cfg,
                         local_context,
                         cfg,
@@ -228,6 +230,8 @@ class Pipeline:
                                 "instance": instance_id,
                                 "returncode": res.returncode,
                                 "prompt_chars": prompt_chars,
+                                "prompt_tokens": prompt_tokens,
+                                "prompt_max_tokens": max_prompt_tokens or 0,
                                 "truncated": truncated,
                                 "stdout_chars": len(res.stdout),
                                 "stderr_chars": len(res.stderr),
@@ -238,6 +242,8 @@ class Pipeline:
                             role_meta["instances"][instance_label] = {
                                 "returncode": res.returncode,
                                 "prompt_chars": prompt_chars,
+                                "prompt_tokens": prompt_tokens,
+                                "prompt_max_tokens": max_prompt_tokens or 0,
                                 "stdout_chars": len(res.stdout),
                                 "stderr_chars": len(res.stderr),
                                 "attempts": role_cfg.retries + 1 - retries_left,
@@ -252,7 +258,7 @@ class Pipeline:
                         attempt += 1
                         shrink = cfg.role_defaults.get("retry_prompt_shrink", 0.85)
                         local_context = dict(local_context)
-                        prompt, prompt_chars, truncated = self._build_prompt(
+                        prompt, prompt_chars, truncated, prompt_tokens, max_prompt_tokens = self._build_prompt(
                             role_cfg,
                             local_context,
                             cfg,
@@ -611,8 +617,21 @@ class Pipeline:
         cfg: AppConfig,
         shrink_factor: float = 1.0,
         repair_missing: str = "",
-    ) -> tuple[str, int, bool]:
+    ) -> tuple[str, int, bool, int, int]:
         max_prompt_chars = role_cfg.max_prompt_chars or int(cfg.role_defaults.get("max_prompt_chars", 0) or 0)
+        prompt_limits = cfg.prompt_limits or {}
+        token_chars = int(prompt_limits.get("token_chars", 4) or 4)
+        max_prompt_tokens = role_cfg.max_prompt_tokens or int(cfg.role_defaults.get("max_prompt_tokens", 0) or 0)
+        if max_prompt_tokens <= 0:
+            model_name = role_cfg.model or ""
+            if not model_name:
+                cmd = parse_cmd(role_cfg.codex_cmd) if role_cfg.codex_cmd else get_codex_cmd(cfg.codex_env_var, cfg.codex_default_cmd)
+                model_name = detect_model_from_cmd(cmd)
+            model_max_tokens = (prompt_limits.get("model_max_tokens") or {}).get(model_name)
+            if model_max_tokens is not None:
+                max_prompt_tokens = int(model_max_tokens)
+            else:
+                max_prompt_tokens = int(prompt_limits.get("default_max_tokens", 0) or 0)
         prompt_context = dict(context)
         if repair_missing:
             prompt_context["repair_note"] = repair_missing
@@ -620,10 +639,11 @@ class Pipeline:
             prompt_context["repair_note"] = ""
         prompt_body = format_prompt(role_cfg.prompt_template, prompt_context, role_cfg.id, cfg.messages)
         prompt = cfg.system_rules + "\n\n" + prompt_body
-        if max_prompt_chars <= 0:
-            return prompt, len(prompt), False
-        if len(prompt) <= max_prompt_chars:
-            return prompt, len(prompt), False
+        prompt_tokens = estimate_tokens(prompt, token_chars) if max_prompt_tokens > 0 else 0
+        if max_prompt_chars <= 0 and max_prompt_tokens <= 0:
+            return prompt, len(prompt), False, prompt_tokens, max_prompt_tokens
+        if self._prompt_within_limits(prompt, max_prompt_chars, max_prompt_tokens, token_chars):
+            return prompt, len(prompt), False, prompt_tokens, max_prompt_tokens
 
         compressed = dict(prompt_context)
         for key, value in list(compressed.items()):
@@ -634,23 +654,56 @@ class Pipeline:
             compressed["snapshot"] = summarize_text(compressed["snapshot"], max_chars=snapshot_limit)
         prompt_body = format_prompt(role_cfg.prompt_template, compressed, role_cfg.id, cfg.messages)
         prompt = cfg.system_rules + "\n\n" + prompt_body
+        prompt_tokens = estimate_tokens(prompt, token_chars) if max_prompt_tokens > 0 else 0
 
         if shrink_factor < 1.0:
-            target = int(max_prompt_chars * shrink_factor)
+            target = int(self._effective_prompt_chars(max_prompt_chars, max_prompt_tokens, token_chars) * shrink_factor)
             if "snapshot" in compressed:
                 compressed["snapshot"] = summarize_text(compressed["snapshot"], max_chars=target)
             prompt_body = format_prompt(role_cfg.prompt_template, compressed, role_cfg.id, cfg.messages)
             prompt = cfg.system_rules + "\n\n" + prompt_body
+            prompt_tokens = estimate_tokens(prompt, token_chars) if max_prompt_tokens > 0 else 0
 
-        if len(prompt) <= max_prompt_chars:
-            return prompt, len(prompt), True
+        if self._prompt_within_limits(prompt, max_prompt_chars, max_prompt_tokens, token_chars):
+            return prompt, len(prompt), True, prompt_tokens, max_prompt_tokens
 
-        overflow = len(prompt) - max_prompt_chars
+        overflow = self._prompt_overflow(prompt, max_prompt_chars, max_prompt_tokens, token_chars)
         if "snapshot" in compressed and overflow > 0:
             compressed["snapshot"] = truncate_text(compressed["snapshot"], max(len(compressed["snapshot"]) - overflow, 256))
             prompt_body = format_prompt(role_cfg.prompt_template, compressed, role_cfg.id, cfg.messages)
             prompt = cfg.system_rules + "\n\n" + prompt_body
-        return prompt, len(prompt), True
+        prompt_tokens = estimate_tokens(prompt, token_chars) if max_prompt_tokens > 0 else 0
+        return prompt, len(prompt), True, prompt_tokens, max_prompt_tokens
+
+    @staticmethod
+    def _effective_prompt_chars(max_prompt_chars: int, max_prompt_tokens: int, token_chars: int) -> int:
+        token_limit_chars = max_prompt_tokens * max(1, token_chars) if max_prompt_tokens > 0 else 0
+        if max_prompt_chars > 0 and token_limit_chars > 0:
+            return min(max_prompt_chars, token_limit_chars)
+        return max_prompt_chars or token_limit_chars
+
+    @staticmethod
+    def _prompt_within_limits(
+        prompt: str, max_prompt_chars: int, max_prompt_tokens: int, token_chars: int
+    ) -> bool:
+        if max_prompt_chars > 0 and len(prompt) > max_prompt_chars:
+            return False
+        if max_prompt_tokens > 0 and estimate_tokens(prompt, token_chars) > max_prompt_tokens:
+            return False
+        return True
+
+    @staticmethod
+    def _prompt_overflow(
+        prompt: str, max_prompt_chars: int, max_prompt_tokens: int, token_chars: int
+    ) -> int:
+        overflow_chars = 0
+        if max_prompt_chars > 0 and len(prompt) > max_prompt_chars:
+            overflow_chars = len(prompt) - max_prompt_chars
+        if max_prompt_tokens > 0:
+            prompt_tokens = estimate_tokens(prompt, token_chars)
+            if prompt_tokens > max_prompt_tokens:
+                overflow_chars = max(overflow_chars, (prompt_tokens - max_prompt_tokens) * max(1, token_chars))
+        return overflow_chars
 
     @staticmethod
     def _build_executor(cfg: AppConfig, role_cfg: RoleConfig, default_timeout: int) -> AgentExecutor:

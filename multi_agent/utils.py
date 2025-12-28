@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import os
 import re
 import shlex
@@ -38,6 +39,23 @@ def get_codex_cmd(env_var: str, default_cmd: str) -> List[str]:
 
 def parse_cmd(raw_cmd: str) -> List[str]:
     return shlex.split(raw_cmd, posix=(os.name != "nt"))
+
+
+def estimate_tokens(text: str, token_chars: int = 4) -> int:
+    if not text:
+        return 0
+    token_chars = max(1, int(token_chars))
+    return int(math.ceil(len(text) / token_chars))
+
+
+def detect_model_from_cmd(cmd: List[str]) -> str:
+    for idx, part in enumerate(cmd):
+        if part in ("--model", "-m"):
+            if idx + 1 < len(cmd):
+                return cmd[idx + 1]
+        if part.startswith("--model="):
+            return part.split("=", 1)[1]
+    return ""
 
 
 def summarize_text(text: str, max_chars: int = 1200) -> str:

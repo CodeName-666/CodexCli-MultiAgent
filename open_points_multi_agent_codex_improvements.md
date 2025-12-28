@@ -5,9 +5,9 @@
 - Grep/rg-Index fuer selektiven Kontext: Dateiauswahl basiert nur auf Task-Token in Dateinamen.
 - Integrationstests mit Mock-Codex fuer End-to-End Runs fehlen.
 - Saubere Abbrueche: kein zentraler Shutdown/Cancel der laufenden Agent-Prozesse bei KeyboardInterrupt in der Pipeline.
-
-## Teilweise umgesetzt
 - Prompt-Limits: Zeichenlimits und Summary-Reduktion sind da, aber keine Token-basierten Schranken oder Modellabhaengigkeit.
+
+## Umgesetzt
 
 ## Fehler/Abweichungen
 - `--validate-config` suggeriert Schema-Validierung, validiert aber nur Pflichtfelder; das kann fehlerhafte Configs passieren lassen.
