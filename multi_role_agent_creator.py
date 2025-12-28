@@ -8,10 +8,12 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 from typing import Dict, List, Tuple
 
+from multi_agent.utils import get_codex_cmd, parse_cmd
 
 DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent / "config" / "main.json"
 DEFAULT_FORMAT_SECTIONS = ["- Aufgaben:", "- Entscheidungen:", "- Offene Punkte:"]
@@ -20,6 +22,7 @@ DEFAULT_RULE_LINES = [
     "Wenn FEHLENDE SEKTIONEN angegeben sind, korrigiere das Format.",
 ]
 DEFAULT_DIFF_TEXT = "Dann liefere einen UNIFIED DIFF (git-style) für alle Änderungen:"
+DEFAULT_OPTIMIZE_TIMEOUT_SEC = 120
 
 
 def load_json(path: Path) -> Dict[str, object]:
@@ -110,6 +113,60 @@ def build_prompt_template(
         lines.append("KONTEXT (Workspace Snapshot):")
         lines.append("{snapshot}")
     return "\n".join(lines) + "\n"
+
+
+def build_description_optimization_prompt(description: str, extra_instructions: str) -> str:
+    instructions = [
+        "Optimiere die folgende Rollenbeschreibung fuer einen Codex-CLI-Agenten.",
+        "Ziel: klare, handlungsorientierte Beschreibung in 2-4 Saetzen.",
+        "Behalte die Sprache des Inputs bei.",
+        "Keine Aufzaehlungen, keine Ueberschriften, keine Anfuehrungszeichen.",
+        "Gib nur den optimierten Text aus.",
+    ]
+    if extra_instructions:
+        instructions.append(f"Zusatzhinweis: {extra_instructions.strip()}")
+    instructions.append("")
+    instructions.append("Beschreibung:")
+    instructions.append(description.strip())
+    return "\n".join(instructions).strip() + "\n"
+
+
+def optimize_description(
+    description: str,
+    cfg: Dict[str, object],
+    args: argparse.Namespace,
+) -> str:
+    codex_cfg = cfg.get("codex") if isinstance(cfg, dict) else None
+    if not isinstance(codex_cfg, dict):
+        raise ValueError("config codex section missing or invalid.")
+    env_var = str(codex_cfg.get("env_var") or "CODEX_CMD")
+    default_cmd = str(codex_cfg.get("default_cmd") or "codex exec -")
+    if args.optimize_codex_cmd:
+        cmd = parse_cmd(args.optimize_codex_cmd)
+    else:
+        cmd = get_codex_cmd(env_var, default_cmd)
+    prompt = build_description_optimization_prompt(description, args.optimize_instructions or "")
+    try:
+        proc = subprocess.run(
+            cmd,
+            input=prompt,
+            text=True,
+            capture_output=True,
+            timeout=args.optimize_timeout_sec,
+        )
+    except FileNotFoundError as exc:
+        raise RuntimeError(f"Codex CLI not found: {exc}") from exc
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(f"Codex CLI timed out after {args.optimize_timeout_sec}s.") from exc
+    if proc.returncode != 0:
+        stderr = (proc.stderr or "").strip()
+        stdout = (proc.stdout or "").strip()
+        reason = stderr or stdout or "unknown error"
+        raise RuntimeError(f"Codex CLI failed (rc={proc.returncode}): {reason}")
+    optimized = (proc.stdout or "").strip()
+    if not optimized:
+        raise RuntimeError("Codex CLI returned empty description.")
+    return optimized
 
 
 def resolve_role_path(base_dir: Path, role_file: str) -> Tuple[Path, str]:
@@ -271,6 +328,25 @@ def parse_args(argv: List[str] | None = None) -> argparse.Namespace:
     p.add_argument("--codex-cmd", help="Override Codex command for this role.")
     p.add_argument("--model", help="Model override for this role.")
     p.add_argument("--run-if-review-critical", action="store_true", help="Run only if review is critical.")
+    p.add_argument(
+        "--optimize-description",
+        action="store_true",
+        help="Optimize role description via Codex CLI before creating the role.",
+    )
+    p.add_argument(
+        "--optimize-instructions",
+        help="Optional extra instructions for description optimization.",
+    )
+    p.add_argument(
+        "--optimize-timeout-sec",
+        type=int,
+        default=DEFAULT_OPTIMIZE_TIMEOUT_SEC,
+        help="Timeout for description optimization via Codex CLI.",
+    )
+    p.add_argument(
+        "--optimize-codex-cmd",
+        help="Override Codex CLI command for description optimization.",
+    )
     desc_group = p.add_mutually_exclusive_group()
     desc_group.add_argument("--description-block", dest="description_block", action="store_true")
     desc_group.add_argument("--no-description-block", dest="description_block", action="store_false")
@@ -302,8 +378,8 @@ def main() -> None:
         print("Error: config roles must be a list.", file=sys.stderr)
         sys.exit(2)
 
-    description = args.description.strip()
-    role_id = (args.role_id or slugify(description)).strip()
+    raw_description = args.description.strip()
+    role_id = (args.role_id or slugify(raw_description)).strip()
     if not role_id:
         print("Error: role id is empty.", file=sys.stderr)
         sys.exit(2)
@@ -323,6 +399,16 @@ def main() -> None:
     if role_path.exists() and not args.force:
         print(f"Error: role file already exists: {role_path}", file=sys.stderr)
         sys.exit(2)
+
+    description = raw_description
+    if args.optimize_description:
+        try:
+            description = optimize_description(raw_description, cfg, args)
+            if not args.description_block:
+                args.description_block = True
+        except (RuntimeError, ValueError) as exc:
+            print(f"Error: description optimization failed: {exc}", file=sys.stderr)
+            sys.exit(2)
 
     context_entries = parse_context_entries(args.context)
     format_sections = normalize_sections(args.section)
