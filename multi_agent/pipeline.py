@@ -125,6 +125,9 @@ class Pipeline:
                 "last_applied_diff": "",
                 "repair_note": "",
             }
+            for role in cfg.roles:
+                context.setdefault(f"{role.id}_summary", "")
+                context.setdefault(f"{role.id}_output", "")
             results: Dict[str, List[AgentResult]] = {}
             apply_log_lines: List[str] = []
             abort_run = False

@@ -129,6 +129,20 @@ In jedem `prompt_template` verfuegbar:
 - `--apply-mode role` wendet Diffs direkt nach der Rolle an und erzeugt einen frischen Snapshot.
 - Die finale Kurz-Ausgabe stammt von `final_role_id`.
 
+### Rollen-Abhaengigkeiten (Mermaid)
+```mermaid
+flowchart TD
+    A[architect] --> B[implementer]
+    B --> C[tester]
+    C --> D[reviewer]
+    D --> E[implementer_revision]
+    A --> F[integrator]
+    B --> F
+    C --> F
+    D --> F
+    E --> F
+```
+
 ## Parallelisierung pro Rolle
 - `roles[].instances` startet mehrere Instanzen derselben Rolle parallel.
 - Task-Board und Log liegen im Run-Ordner (`task_board.json`, `coordination.log`).

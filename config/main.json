@@ -82,7 +82,7 @@
       "file": "roles/reviewer.json",
       "apply_diff": true,
       "instances": 1,
-      "depends_on": ["implementer"],
+      "depends_on": ["tester"],
       "timeout_sec": 900,
       "expected_sections": [
         "# Review",
