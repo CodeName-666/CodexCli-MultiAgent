@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import abc
+import fnmatch
 import re
+import shutil
+import subprocess
 from pathlib import Path
 from typing import Dict, List, Tuple
 
@@ -12,7 +15,14 @@ class BaseDiffApplier(abc.ABC):
         raise NotImplementedError
 
     @abc.abstractmethod
-    def apply(self, workdir: Path, diff_text: str, diff_messages: Dict[str, str]) -> Tuple[bool, str]:
+    def apply(
+        self,
+        workdir: Path,
+        diff_text: str,
+        diff_messages: Dict[str, str],
+        diff_safety: Dict[str, object],
+        diff_apply: Dict[str, object],
+    ) -> Tuple[bool, str]:
         raise NotImplementedError
 
 
@@ -29,7 +39,14 @@ class UnifiedDiffApplier(BaseDiffApplier):
             return ""
         return (text or "")[m.start():].strip()
 
-    def apply(self, workdir: Path, diff_text: str, diff_messages: Dict[str, str]) -> Tuple[bool, str]:
+    def apply(
+        self,
+        workdir: Path,
+        diff_text: str,
+        diff_messages: Dict[str, str],
+        diff_safety: Dict[str, object],
+        diff_apply: Dict[str, object],
+    ) -> Tuple[bool, str]:
         """
         Sehr konservativer Unified-Diff Applier:
         - Erwartet git-style: diff --git a/... b/...
@@ -37,6 +54,15 @@ class UnifiedDiffApplier(BaseDiffApplier):
         - Unterstützt Datei-Neuanlage, Änderungen, Löschungen (eingeschränkt)
         """
         try:
+            safe, msg = self._check_safety(workdir, diff_text, diff_messages, diff_safety)
+            if not safe:
+                return False, msg
+            if self._should_use_git(diff_apply, workdir):
+                ok, msg = self._apply_with_git(workdir, diff_text, diff_messages, diff_apply)
+                if ok:
+                    return True, msg
+                if diff_apply.get("fallback_to_builtin", True) is False:
+                    return False, msg
             blocks = self._split_diff_by_file(diff_text, diff_messages)
             for rel_path, file_block in blocks:
                 ok, msg = self._apply_file_block(workdir, rel_path, file_block, diff_messages)
@@ -45,6 +71,92 @@ class UnifiedDiffApplier(BaseDiffApplier):
             return True, str(diff_messages["patch_applied"])
         except Exception as e:
             return False, str(diff_messages["patch_exception"]).format(error=e)
+
+    def _check_safety(
+        self,
+        workdir: Path,
+        diff_text: str,
+        diff_messages: Dict[str, str],
+        diff_safety: Dict[str, object],
+    ) -> Tuple[bool, str]:
+        blocklist = [str(item) for item in diff_safety.get("blocklist", [])]
+        allowlist = [str(item) for item in diff_safety.get("allowlist", [])]
+        if not blocklist:
+            return True, ""
+        paths = [m.group(2) for m in self.DIFF_GIT_HEADER_RE.finditer(diff_text)]
+        for rel_path in paths:
+            rel_path_norm = rel_path.replace("\\", "/")
+            abs_path = (workdir / rel_path).resolve().as_posix()
+            if self._is_allowed(rel_path_norm, abs_path, allowlist):
+                continue
+            if self._is_blocked(rel_path_norm, abs_path, blocklist):
+                return False, str(diff_messages["blocked_path"]).format(path=rel_path_norm)
+        return True, ""
+
+    @staticmethod
+    def _is_allowed(rel_path: str, abs_path: str, allowlist: List[str]) -> bool:
+        for pattern in allowlist:
+            pattern = str(Path(pattern).expanduser()).replace("\\", "/")
+            if fnmatch.fnmatch(rel_path, pattern) or fnmatch.fnmatch(abs_path, pattern):
+                return True
+        return False
+
+    @staticmethod
+    def _is_blocked(rel_path: str, abs_path: str, blocklist: List[str]) -> bool:
+        for pattern in blocklist:
+            pattern = str(Path(pattern).expanduser()).replace("\\", "/")
+            if fnmatch.fnmatch(rel_path, pattern) or fnmatch.fnmatch(abs_path, pattern):
+                return True
+        return False
+
+    @staticmethod
+    def _should_use_git(diff_apply: Dict[str, object], workdir: Path) -> bool:
+        if not diff_apply.get("use_git", True):
+            return False
+        if not (workdir / ".git").exists():
+            return False
+        return shutil.which("git") is not None
+
+    def _apply_with_git(
+        self,
+        workdir: Path,
+        diff_text: str,
+        diff_messages: Dict[str, str],
+        diff_apply: Dict[str, object],
+    ) -> Tuple[bool, str]:
+        check = subprocess.run(
+            ["git", "apply", "--check", "-"],
+            input=diff_text,
+            text=True,
+            cwd=str(workdir),
+            capture_output=True,
+        )
+        if check.returncode != 0:
+            reason = (check.stderr or check.stdout or "").strip()
+            return False, str(diff_messages["git_apply_check_failed"]).format(error=reason)
+        apply = subprocess.run(
+            ["git", "apply", "--whitespace=nowarn", "-"],
+            input=diff_text,
+            text=True,
+            cwd=str(workdir),
+            capture_output=True,
+        )
+        if apply.returncode == 0:
+            return True, str(diff_messages["patch_applied"])
+        if diff_apply.get("use_3way", True):
+            apply_3way = subprocess.run(
+                ["git", "apply", "--3way", "-"],
+                input=diff_text,
+                text=True,
+                cwd=str(workdir),
+                capture_output=True,
+            )
+            if apply_3way.returncode == 0:
+                return True, str(diff_messages["patch_applied_3way"])
+            reason = (apply_3way.stderr or apply_3way.stdout or "").strip()
+            return False, str(diff_messages["git_apply_failed"]).format(error=reason)
+        reason = (apply.stderr or apply.stdout or "").strip()
+        return False, str(diff_messages["git_apply_failed"]).format(error=reason)
 
     def _split_diff_by_file(self, diff_text: str, diff_messages: Dict[str, str]) -> List[Tuple[str, str]]:
         matches = list(self.DIFF_GIT_HEADER_RE.finditer(diff_text))

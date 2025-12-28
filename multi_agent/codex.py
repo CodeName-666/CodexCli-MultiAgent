@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import sys
 from pathlib import Path
 from typing import Dict, List, Tuple
 
@@ -28,6 +29,13 @@ class CodexClient:
             )
             rc = proc.returncode or 0
             return rc, stdout_b.decode("utf-8", "replace"), stderr_b.decode("utf-8", "replace")
+        except asyncio.CancelledError:
+            try:
+                proc.kill()
+            except ProcessLookupError:
+                pass
+            stdout_b, stderr_b = await proc.communicate()
+            raise
         except asyncio.TimeoutError:
             try:
                 proc.kill()
@@ -57,6 +65,12 @@ class AgentExecutor:
     ) -> AgentResult:
         print(f"[Agent-Start] {agent.name} ({agent.role})")
         rc, out, err = await self._client.run(prompt, workdir=workdir)
+        if rc == 1:
+            error_detail = (err.strip() or out.strip() or "Keine Fehlerausgabe.")
+            print(
+                self._messages["role_rc1_error"].format(agent_name=agent.name, error=error_detail),
+                file=sys.stderr,
+            )
         status_text = get_status_text(rc, out, self._messages)
         content = (
             f"{self._agent_output_cfg['agent_header'].format(name=agent.name, role=agent.role)}\n\n"

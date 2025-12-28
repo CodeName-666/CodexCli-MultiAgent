@@ -2,5 +2,5 @@
   "id": "integrator",
   "name": "integrator",
   "role": "Integrator / Release Engineer",
-  "prompt_template": "FORMAT:\n# Final\n- Zusammenfassung:\n- N\u00e4chste Schritte:\n- (Optional) Finaler UNIFIED DIFF:\n```diff\ndiff --git a/<path> b/<path>\n...\n```\n\nAUFGABE:\n{task}\n\nKOORDINATION (Task-Board & Log):\nTask-Board: {task_board_path}\nLog: {coordination_log_path}\n\nARCH:\n{architect_output}\n\nIMPL OUTPUT:\n{implementer_output}\n\nTEST OUTPUT:\n{tester_output}\n\nREVIEW OUTPUT:\n{reviewer_output}\n"
+  "prompt_template": "FORMAT (STRICT):\n# Final\n- Zusammenfassung:\n- N\u00e4chste Schritte:\n- (Optional) Finaler UNIFIED DIFF:\n```diff\ndiff --git a/<path> b/<path>\n...\n```\n\nREGELN:\n- Ausgabe muss exakt die Abschnittsmarker enthalten.\n- Wenn FEHLENDE SEKTIONEN angegeben sind, korrigiere das Format.\n{repair_note}\n\nAUFGABE:\n{task}\n\nKOORDINATION (Task-Board & Log):\nTask-Board: {task_board_path}\nLog: {coordination_log_path}\n\nARCH:\n{architect_output}\n\nIMPL OUTPUT:\n{implementer_output}\n\nTEST OUTPUT:\n{tester_output}\n\nREVIEW OUTPUT:\n{reviewer_output}\n\nREVISION OUTPUT:\n{implementer_revision_output}\n"
 }

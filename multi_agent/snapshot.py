@@ -1,11 +1,24 @@
 from __future__ import annotations
 
 import abc
+import hashlib
+import json
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
 from .constants import DEFAULT_MAX_FILES, DEFAULT_MAX_FILE_BYTES
-from .utils import read_text_safe
+from .utils import read_text_safe, select_relevant_files
+
+
+@dataclass(frozen=True)
+class SnapshotResult:
+    text: str
+    files: List[Path]
+    cache_hit: bool
+    delta_used: bool
+    max_bytes_per_file: int
+    total_bytes: int
 
 
 class BaseSnapshotter(abc.ABC):
@@ -16,7 +29,8 @@ class BaseSnapshotter(abc.ABC):
         snapshot_cfg: Dict[str, object],
         max_files: int,
         max_bytes_per_file: int,
-    ) -> str:
+        task: str | None = None,
+    ) -> SnapshotResult:
         raise NotImplementedError
 
 
@@ -27,7 +41,8 @@ class WorkspaceSnapshotter(BaseSnapshotter):
         snapshot_cfg: Dict[str, object],
         max_files: int = DEFAULT_MAX_FILES,
         max_bytes_per_file: int = DEFAULT_MAX_FILE_BYTES,
-    ) -> str:
+        task: str | None = None,
+    ) -> SnapshotResult:
         """
         Snapshot des Workspaces:
         - Liste der Dateien
@@ -37,6 +52,15 @@ class WorkspaceSnapshotter(BaseSnapshotter):
         files: List[Path] = []
         skip_dirs = set(snapshot_cfg.get("skip_dirs", []))
         skip_exts = set(snapshot_cfg.get("skip_exts", []))
+        cache_file = snapshot_cfg.get("cache_file")
+        delta_snapshot = bool(snapshot_cfg.get("delta_snapshot", False))
+        selective_context = snapshot_cfg.get("selective_context", {})
+        if not isinstance(selective_context, dict):
+            selective_context = {"enabled": bool(selective_context)}
+        selective_enabled = bool(selective_context.get("enabled", False))
+        selective_min_files = int(selective_context.get("min_files", 0))
+        selective_max_files = int(selective_context.get("max_files", max_files))
+        max_total_bytes = snapshot_cfg.get("max_total_bytes")
 
         for p in root.rglob("*"):
             if p.is_dir():
@@ -46,12 +70,39 @@ class WorkspaceSnapshotter(BaseSnapshotter):
                 continue
             files.append(p)
 
-        files = sorted(files)[:max_files]
+        files = sorted(files)
+        if selective_enabled:
+            files = select_relevant_files(task or "", files, selective_min_files, selective_max_files)
+        files = files[:max_files]
+
+        cache_hit, delta_used, selected_files, cached_snapshot = self._apply_cache(
+            root,
+            files,
+            cache_file,
+            delta_snapshot,
+        )
+        if cache_hit and cached_snapshot is not None:
+            return SnapshotResult(
+                text=str(cached_snapshot),
+                files=files,
+                cache_hit=True,
+                delta_used=False,
+                max_bytes_per_file=max_bytes_per_file,
+                total_bytes=len(str(cached_snapshot).encode("utf-8", errors="replace")),
+            )
+        if selected_files is not None:
+            files = selected_files
+
+        effective_max_bytes = int(max_bytes_per_file)
+        if max_total_bytes is not None and files:
+            per_file = int(max_total_bytes) // max(len(files), 1)
+            effective_max_bytes = max(256, min(effective_max_bytes, per_file))
 
         lines: List[str] = []
         lines.append(str(snapshot_cfg["workspace_header"]).format(root=root))
         lines.append("")
         lines.append(str(snapshot_cfg["files_header"]))
+        total_bytes = 0
         for p in files:
             rel = p.relative_to(root)
             try:
@@ -66,10 +117,83 @@ class WorkspaceSnapshotter(BaseSnapshotter):
             if p.suffix.lower() in skip_exts:
                 continue
             rel = p.relative_to(root)
-            content = read_text_safe(p, limit_bytes=max_bytes_per_file)
+            content = read_text_safe(p, limit_bytes=effective_max_bytes)
             if not content.strip():
                 continue
             header = str(snapshot_cfg["file_section_header"]).format(rel=rel)
             lines.append(f"\n{header}\n")
             lines.append(content)
-        return "\n".join(lines)
+            total_bytes += len(content.encode("utf-8", errors="replace"))
+        snapshot_text = "\n".join(lines)
+
+        self._write_cache(root, files, cache_file, snapshot_text)
+        return SnapshotResult(
+            text=snapshot_text,
+            files=files,
+            cache_hit=cache_hit,
+            delta_used=delta_used,
+            max_bytes_per_file=effective_max_bytes,
+            total_bytes=total_bytes,
+        )
+
+    def _apply_cache(
+        self,
+        root: Path,
+        files: List[Path],
+        cache_file: object,
+        delta_snapshot: bool,
+    ) -> Tuple[bool, bool, List[Path] | None, str | None]:
+        if not cache_file:
+            return False, False, None, None
+        cache_path = root / str(cache_file)
+        cache = self._load_cache(cache_path)
+        current_index = self._build_file_index(root, files)
+        current_hash = self._hash_file_index(current_index)
+        if cache and cache.get("signature_hash") == current_hash and cache.get("snapshot"):
+            return True, False, files, str(cache.get("snapshot"))
+        if delta_snapshot and cache and cache.get("file_index"):
+            prev_index = cache.get("file_index", {})
+            changed = [
+                root / rel
+                for rel, meta in current_index.items()
+                if prev_index.get(rel) != meta
+            ]
+            return False, True, changed, None
+        return False, False, None, None
+
+    def _load_cache(self, path: Path) -> Dict[str, object]:
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except (FileNotFoundError, json.JSONDecodeError):
+            return {}
+
+    def _write_cache(self, root: Path, files: List[Path], cache_file: object, snapshot: str) -> None:
+        if not cache_file:
+            return
+        cache_path = root / str(cache_file)
+        file_index = self._build_file_index(root, files)
+        payload = {
+            "signature_hash": self._hash_file_index(file_index),
+            "file_index": file_index,
+            "snapshot": snapshot,
+        }
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        cache_path.write_text(json.dumps(payload, ensure_ascii=True) + "\n", encoding="utf-8")
+
+    @staticmethod
+    def _build_file_index(root: Path, files: List[Path]) -> Dict[str, Tuple[int, int]]:
+        index: Dict[str, Tuple[int, int]] = {}
+        for p in files:
+            rel = p.relative_to(root).as_posix()
+            try:
+                stat = p.stat()
+                index[rel] = (int(stat.st_mtime), int(stat.st_size))
+            except OSError:
+                index[rel] = (0, 0)
+        return index
+
+    @staticmethod
+    def _hash_file_index(index: Dict[str, Tuple[int, int]]) -> str:
+        items = [f"{key}:{meta[0]}:{meta[1]}" for key, meta in sorted(index.items())]
+        digest = hashlib.sha256("\n".join(items).encode("utf-8")).hexdigest()
+        return digest

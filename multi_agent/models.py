@@ -13,6 +13,14 @@ class RoleConfig:
     prompt_template: str
     apply_diff: bool
     instances: int
+    depends_on: List[str]
+    timeout_sec: int | None
+    retries: int
+    max_prompt_chars: int | None
+    max_output_chars: int | None
+    expected_sections: List[str]
+    run_if_review_critical: bool
+    codex_cmd: str | None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -32,6 +40,11 @@ class AppConfig:
     messages: Dict[str, str]
     diff_messages: Dict[str, str]
     cli: Dict[str, object]
+    role_defaults: Dict[str, object]
+    diff_safety: Dict[str, object]
+    diff_apply: Dict[str, object]
+    logging: Dict[str, object]
+    feedback_loop: Dict[str, object]
 
 
 @dataclasses.dataclass(frozen=True)

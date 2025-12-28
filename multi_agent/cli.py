@@ -31,6 +31,7 @@ def parse_args(cfg, argv: Optional[List[str]] = None) -> argparse.Namespace:
         default=[],
         help=str(args_cfg["apply_roles"]["help"]),
     )
+    p.add_argument("--apply-confirm", action="store_true", help=str(args_cfg["apply_confirm"]["help"]))
     p.add_argument("--fail-fast", action="store_true", help=str(args_cfg["fail_fast"]["help"]))
     p.add_argument("--ignore-fail", action="store_true", help=str(args_cfg["ignore_fail"]["help"]))
     p.add_argument("--max-files", type=int, default=DEFAULT_MAX_FILES, help=str(args_cfg["max_files"]["help"]))
@@ -40,6 +41,7 @@ def parse_args(cfg, argv: Optional[List[str]] = None) -> argparse.Namespace:
         default=DEFAULT_MAX_FILE_BYTES,
         help=str(args_cfg["max_file_bytes"]["help"]),
     )
+    p.add_argument("--validate-config", action="store_true", help=str(args_cfg["validate_config"]["help"]))
     return p.parse_args(argv)
 
 
@@ -54,6 +56,15 @@ def main() -> None:
         sys.exit(2)
 
     args = parse_args(cfg)
+    if args.validate_config:
+        from .schema_validator import validate_config
+
+        ok, error = validate_config(DEFAULT_CONFIG_PATH)
+        if not ok:
+            print(f"Fehler: Konfiguration ungueltig: {error}", file=sys.stderr)
+            sys.exit(2)
+        print("Konfiguration ist gueltig.")
+        sys.exit(0)
     pipeline = build_pipeline()
     try:
         rc = asyncio.run(pipeline.run(args, cfg))

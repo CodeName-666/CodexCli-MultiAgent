@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import os
+import re
 import shlex
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, Iterable, List, Tuple
 
 
 def now_stamp() -> str:
@@ -35,6 +36,10 @@ def get_codex_cmd(env_var: str, default_cmd: str) -> List[str]:
     return shlex.split(raw, posix=(os.name != "nt"))
 
 
+def parse_cmd(raw_cmd: str) -> List[str]:
+    return shlex.split(raw_cmd, posix=(os.name != "nt"))
+
+
 def summarize_text(text: str, max_chars: int = 1200) -> str:
     text = (text or "").strip()
     if len(text) <= max_chars:
@@ -42,6 +47,15 @@ def summarize_text(text: str, max_chars: int = 1200) -> str:
     head = text[: max_chars // 2].rstrip()
     tail = text[- max_chars // 2 :].lstrip()
     return head + "\n...\n" + tail
+
+
+def truncate_text(text: str, max_chars: int) -> str:
+    text = (text or "")
+    if max_chars < 1:
+        return ""
+    if len(text) <= max_chars:
+        return text
+    return text[: max_chars - 3].rstrip() + "..."
 
 
 def format_prompt(template: str, context: Dict[str, str], role_id: str, messages: Dict[str, str]) -> str:
@@ -58,3 +72,64 @@ def get_status_text(returncode: int, stdout: str, messages: Dict[str, str]) -> s
     if not (stdout or "").strip():
         return messages["status_no_output"]
     return messages["status_ok"]
+
+
+def extract_error_reason(stdout: str, stderr: str, max_chars: int = 200) -> str:
+    raw = (stderr or "").strip() or (stdout or "").strip()
+    if not raw:
+        return "Keine Fehlerausgabe."
+    raw = re.sub(r"\s+", " ", raw)
+    return truncate_text(raw, max_chars)
+
+
+def normalize_output_text(text: str) -> str:
+    lines = [(line.rstrip()) for line in (text or "").splitlines()]
+    normalized: List[str] = []
+    blank = False
+    for idx, line in enumerate(lines):
+        if line.strip() == "":
+            if blank:
+                continue
+            blank = True
+            normalized.append("")
+            continue
+        blank = False
+        if line.strip().endswith(":"):
+            next_idx = idx + 1
+            while next_idx < len(lines) and lines[next_idx].strip() == "":
+                next_idx += 1
+            if next_idx >= len(lines):
+                continue
+            next_line = lines[next_idx].lstrip()
+            if next_line.startswith("-") or next_line.startswith("#"):
+                continue
+        normalized.append(line)
+    return "\n".join(normalized).strip()
+
+
+def validate_output_sections(text: str, expected_sections: Iterable[str]) -> Tuple[bool, List[str]]:
+    missing: List[str] = []
+    for section in expected_sections:
+        if section and section not in text:
+            missing.append(section)
+    return len(missing) == 0, missing
+
+
+def select_relevant_files(
+    task: str,
+    files: Iterable[Path],
+    min_files: int,
+    max_files: int,
+) -> List[Path]:
+    tokens = [t for t in re.split(r"[^A-Za-z0-9_./-]+", task or "") if len(t) >= 3]
+    lowered = [t.lower() for t in tokens]
+    if not lowered:
+        return list(files)
+    matches: List[Path] = []
+    for path in files:
+        rel = path.as_posix().lower()
+        if any(tok in rel for tok in lowered):
+            matches.append(path)
+    if len(matches) < min_files:
+        return list(files)
+    return matches[:max_files]

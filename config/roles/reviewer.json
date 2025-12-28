@@ -2,5 +2,5 @@
   "id": "reviewer",
   "name": "reviewer",
   "role": "Staff Engineer (Code Reviewer)",
-  "prompt_template": "FORMAT:\n# Review\n- Findings:\n- Risiko/Impact:\n- Empfohlene \u00c4nderungen:\n- Optionaler UNIFIED DIFF mit Fixes:\n```diff\ndiff --git a/<path> b/<path>\n...\n```\n\nAUFGABE:\n{task}\n\nARCH (Kurz):\n{architect_summary}\n\nIMPL (Kurz):\n{implementer_summary}\n\nTESTS (Kurz):\n{tester_summary}\n\nKOORDINATION (Task-Board & Log):\nTask-Board: {task_board_path}\nLog: {coordination_log_path}\n\nKONTEXT (Workspace Snapshot):\n{snapshot}\n"
+  "prompt_template": "FORMAT (STRICT):\n# Review\n- Findings:\n- Risiko/Impact:\n- Empfohlene \u00c4nderungen:\n- Optionaler UNIFIED DIFF mit Fixes:\n```diff\ndiff --git a/<path> b/<path>\n...\n```\n\nREGELN:\n- Ausgabe muss exakt diese Abschnittsmarker enthalten.\n- Wenn FEHLENDE SEKTIONEN angegeben sind, korrigiere das Format.\n{repair_note}\n\nAUFGABE:\n{task}\n\nARCH (Kurz):\n{architect_summary}\n\nIMPL (Kurz):\n{implementer_summary}\n\nTESTS (Kurz):\n{tester_summary}\n\nLAST APPLIED DIFF (optional):\n{last_applied_diff}\n\nKOORDINATION (Task-Board & Log):\nTask-Board: {task_board_path}\nLog: {coordination_log_path}\n\nKONTEXT (Workspace Snapshot):\n{snapshot}\n"
 }
