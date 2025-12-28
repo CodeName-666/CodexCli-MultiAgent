@@ -5,7 +5,7 @@
   "final_summary_max_chars": 2400,
   "codex": {
     "env_var": "CODEX_CMD",
-    "default_cmd": "codex"
+    "default_cmd": "codex exec -"
   },
   "paths": {
     "run_dir": ".multi_agent_runs",
