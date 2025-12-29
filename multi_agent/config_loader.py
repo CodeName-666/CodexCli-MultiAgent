@@ -63,6 +63,8 @@ def load_app_config(config_path: Path) -> AppConfig:
     final_role_id = str(data.get("final_role_id") or (roles[-1].id if roles else ""))
     coordination = data.get("coordination") or {}
     outputs = data.get("outputs") or {}
+    task_limits = data.get("task_limits") or {}
+    task_split = data.get("task_split") or {}
     return AppConfig(
         system_rules=str(data["system_rules"]),
         roles=roles,
@@ -81,6 +83,8 @@ def load_app_config(config_path: Path) -> AppConfig:
         cli=data["cli"],
         role_defaults=role_defaults,
         prompt_limits=data.get("prompt_limits") or {},
+        task_limits=task_limits,
+        task_split=task_split,
         diff_safety=data.get("diff_safety") or {},
         diff_apply=data.get("diff_apply") or {},
         logging=data.get("logging") or {},

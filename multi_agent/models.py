@@ -44,6 +44,8 @@ class AppConfig:
     cli: Dict[str, object]
     role_defaults: Dict[str, object]
     prompt_limits: Dict[str, object]
+    task_limits: Dict[str, object]
+    task_split: Dict[str, object]
     diff_safety: Dict[str, object]
     diff_apply: Dict[str, object]
     logging: Dict[str, object]

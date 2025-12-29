@@ -41,18 +41,25 @@ class Pipeline:
         self._snapshotter = snapshotter
         self._diff_applier = diff_applier
 
-    async def run(self, args: argparse.Namespace, cfg: AppConfig) -> int:
+    async def run(self, args: argparse.Namespace, cfg: AppConfig, run_id_override: str | None = None) -> int:
         workdir = Path(args.dir).resolve()
         workdir.mkdir(parents=True, exist_ok=True)
 
-        run_id = now_stamp()
+        run_id = run_id_override or now_stamp()
         run_dir = workdir / str(cfg.paths["run_dir"]) / run_id
         run_dir.mkdir(parents=True, exist_ok=True)
 
-        task = (args.task or "").strip()
-        if not task:
+        raw_task = (args.task or "").strip()
+        if not raw_task:
             print(cfg.messages["error_task_empty"], file=sys.stderr)
             return 2
+        try:
+            task_payload = self._prepare_task(raw_task, workdir, run_dir, cfg.task_limits)
+        except (FileNotFoundError, ValueError) as exc:
+            print(str(exc), file=sys.stderr)
+            return 2
+        task_display = task_payload["display"]
+        task_full = task_payload["full"]
 
         apply_roles = [role for role in cfg.roles if role.apply_diff]
         try:
@@ -77,6 +84,13 @@ class Pipeline:
             "args": vars(args),
             "roles": {},
             "snapshot": {},
+            "task": {
+                "source": task_payload["source"],
+                "full_length": len(task_full),
+                "display_length": len(task_display),
+                "truncated": task_payload["truncated"],
+                "file_ref": task_payload["file_ref"],
+            },
         }
         json_logger = self._build_json_logger(cfg, workdir, run_id, run_dir)
         json_logger.log("run_start", {"run_id": run_id})
@@ -90,7 +104,7 @@ class Pipeline:
                 cfg.snapshot,
                 max_files=args.max_files,
                 max_bytes_per_file=args.max_file_bytes,
-                task=task,
+                task=task_full,
             )
             snapshot_text = snapshot_result.text
             write_text(run_dir / str(cfg.paths["snapshot_filename"]), snapshot_text)
@@ -120,7 +134,8 @@ class Pipeline:
             coordination_log = CoordinationLog(coordination_log_path)
 
             context: Dict[str, str] = {
-                "task": task,
+                "task": task_display,
+                "task_full_path": task_payload["file_ref"],
                 "snapshot": snapshot_text,
                 "task_board_path": str(task_board_path),
                 "coordination_log_path": str(coordination_log_path),
@@ -420,7 +435,9 @@ class Pipeline:
                 print("\n" + cfg.messages["integrator_output_header"] + "\n")
                 final_role_cfg = next((role for role in cfg.roles if role.id == final_role_id), None)
                 final_output = self._combine_outputs(final_role_cfg or final_role_id, final_results, lambda text: text)
-                print(summarize_text(final_output, max_chars=cfg.final_summary_max_chars))
+                final_summary = summarize_text(final_output, max_chars=cfg.final_summary_max_chars)
+                print(final_summary)
+                write_text(run_dir / "final_summary.txt", final_summary + "\n")
                 print("")
 
             if args.ignore_fail:
@@ -610,6 +627,64 @@ class Pipeline:
             return ""
         return "FEHLENDE SEKTIONEN: " + ", ".join(missing)
 
+    @staticmethod
+    def _prepare_task(
+        raw_task: str,
+        workdir: Path,
+        run_dir: Path,
+        task_limits: Dict[str, object],
+    ) -> Dict[str, object]:
+        task = (raw_task or "").strip()
+        task_source = ""
+        task_full = task
+        if task.startswith("@"):
+            path_raw = task[1:].strip()
+            if not path_raw:
+                raise ValueError("Fehler: Task-Datei ist leer (nutze '@pfad').")
+            task_path = Path(path_raw).expanduser()
+            if not task_path.is_absolute():
+                task_path = (workdir / task_path).resolve()
+            try:
+                task_full = task_path.read_text(encoding="utf-8")
+            except FileNotFoundError as exc:
+                raise FileNotFoundError(f"Fehler: Task-Datei nicht gefunden: {task_path}") from exc
+            task_source = str(task_path)
+
+        if not task_full.strip():
+            raise ValueError("Fehler: --task ist leer.")
+
+        inline_max = int(task_limits.get("inline_max_chars", 2400) or 2400)
+        summary_max = int(task_limits.get("summary_max_chars", 1600) or 1600)
+        full_name = str(task_limits.get("full_text_filename") or "task_full.md")
+
+        truncated = False
+        task_display = task_full
+        if inline_max > 0 and len(task_full) > inline_max:
+            truncated = True
+            if summary_max <= 0:
+                summary_max = inline_max
+            summary_max = max(256, min(summary_max, inline_max))
+            task_display = summarize_text(task_full, max_chars=summary_max)
+
+        needs_full_file = bool(task_source) or truncated
+        task_file_ref = ""
+        if needs_full_file:
+            full_path = run_dir / full_name
+            write_text(full_path, task_full)
+            try:
+                task_file_ref = str(full_path.relative_to(workdir))
+            except ValueError:
+                task_file_ref = str(full_path)
+            task_display = f"{task_display}\n\n[VOLLTEXT: {task_file_ref}]"
+
+        return {
+            "display": task_display,
+            "full": task_full,
+            "file_ref": task_file_ref,
+            "source": task_source,
+            "truncated": truncated,
+        }
+
     def _build_prompt(
         self,
         role_cfg: RoleConfig,
@@ -673,6 +748,13 @@ class Pipeline:
             prompt_body = format_prompt(role_cfg.prompt_template, compressed, role_cfg.id, cfg.messages)
             prompt = cfg.system_rules + "\n\n" + prompt_body
         prompt_tokens = estimate_tokens(prompt, token_chars) if max_prompt_tokens > 0 else 0
+        if not self._prompt_within_limits(prompt, max_prompt_chars, max_prompt_tokens, token_chars):
+            overflow = self._prompt_overflow(prompt, max_prompt_chars, max_prompt_tokens, token_chars)
+            if "task" in compressed and overflow > 0:
+                compressed["task"] = truncate_text(compressed["task"], max(len(compressed["task"]) - overflow, 256))
+                prompt_body = format_prompt(role_cfg.prompt_template, compressed, role_cfg.id, cfg.messages)
+                prompt = cfg.system_rules + "\n\n" + prompt_body
+                prompt_tokens = estimate_tokens(prompt, token_chars) if max_prompt_tokens > 0 else 0
         return prompt, len(prompt), True, prompt_tokens, max_prompt_tokens
 
     @staticmethod

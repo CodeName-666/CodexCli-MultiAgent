@@ -29,6 +29,93 @@ Minimaler Lauf (ohne Patch-Apply):
 ```bash
 python multi_agent_codex.py --task "Analysiere Modul X"
 ```
+Ohne Patch-Apply bedeutet: Es werden keine Dateien im Workspace veraendert. Die Agenten schreiben nur Outputs/Diffs in `.multi_agent_runs/<timestamp>/`.
+
+Task aus Datei (empfohlen fuer lange Aufgaben):
+```bash
+python multi_agent_codex.py --task "@implementierer.md"
+```
+Das `@` vor dem Pfad bedeutet: Der Task wird aus einer Datei geladen. `implementierer.md` ist nur ein Beispielname; jeder Pfad ist moeglich.
+Du nutzt `@pfad` nur dann, wenn du den Task nicht inline schreiben willst, sondern aus einer Datei laden moechtest (z.B. sehr lange Beschreibung, versionierbare Aufgaben, mehrere Abschnitte).
+
+Patch-Apply ausfuehren (Aenderungen in den Workspace schreiben):
+```bash
+python multi_agent_codex.py --task "@implementierer.md" --apply
+```
+`--apply` nimmt die von den Rollen erzeugten Unified Diffs und wendet sie auf den Workspace an. Optional kannst du mit `--apply-confirm` jeden Diff bestaetigen. Mit `--apply-mode role` werden Diffs sofort nach jeder Rolle angewendet (sonst am Ende).
+
+Task-Splitting ueber Ueberschriften (mehrere Runs):
+```bash
+python multi_agent_codex.py --task "@implementierer.md" --task-split
+```
+Ob gesplittet wird, steuert `task_split.decision_mode` in `config/main.json` (`auto` oder `always`).
+
+### Wann benutze ich `@pfad`?
+- **Ohne @**: kurze, einfache Aufgaben direkt im CLI (inline).
+  ```bash
+  python multi_agent_codex.py --task "Baue Feature X"
+  ```
+- **Mit @**: lange Aufgaben aus einer Datei laden.
+  ```bash
+  python multi_agent_codex.py --task "@tasks/feature_x.md"
+  ```
+- **Wichtig**: Die Task-Datei erstellst du selbst. Sie wird **nicht** automatisch erzeugt.
+- Agent-Outputs liegen unter `.multi_agent_runs/` (z.B. `implementer_1.md`) und sind **nicht** dasselbe wie eine Task-Datei.
+- `@pfad` ist ein normaler Dateipfad (relativ zum Arbeitsverzeichnis oder absolut). Wenn die Datei fehlt, bricht der Lauf mit Fehler ab.
+- **Kein Pflicht-Format**: Die Task-Datei kann beliebiger Text/Markdown sein. Ueberschriften helfen nur beim automatischen Splitten.
+
+Optionales Template (nur Empfehlung, kein Muss):
+```md
+# Titel
+## Ziel
+- Was soll erreicht werden?
+
+## Anforderungen
+- Punkt 1
+- Punkt 2
+
+## Akzeptanzkriterien
+- Kriterium 1
+- Kriterium 2
+
+## Hinweise
+- Relevante Dateien/Module
+- Randbedingungen
+```
+
+Beispiel ohne Template (trotzdem gueltig):
+```text
+Bitte baue ein Feature, das CSV-Importe erlaubt.
+Die Datei kommt per Upload und soll validiert werden.
+Fehler muessen klar im API-Response erscheinen.
+Tests fuer Import + Validierung sind Pflicht.
+```
+
+Beispiel fuer eine Task-Datei (`tasks/feature_x.md`):
+```bash
+mkdir -p tasks
+cat > tasks/feature_x.md <<'EOF'
+# Feature X
+- Ziel: API-Endpoint /v1/items
+- Anforderungen:
+  - GET /v1/items mit Pagination
+  - POST /v1/items mit Validierung
+  - Tests fuer beide Endpoints
+EOF
+```
+Inhalt der Datei (`tasks/feature_x.md`):
+```text
+# Feature X
+- Ziel: API-Endpoint /v1/items
+- Anforderungen:
+  - GET /v1/items mit Pagination
+  - POST /v1/items mit Validierung
+  - Tests fuer beide Endpoints
+```
+Ausfuehren mit Datei-Task:
+```bash
+python multi_agent_codex.py --task "@tasks/feature_x.md"
+```
 Erwartete Artefakte (pro Run):
 - `config/main.json` steuert, welche Rollen laufen.
 - `config/roles/*.json` enthalten die Rollen-Prompts.
@@ -46,7 +133,7 @@ python multi_agent_codex.py \
 ### multi_agent_codex.py
 | Flag | Beschreibung |
 |-----|--------------|
-| --task | Zentrale Aufgabe (Pflicht) |
+| --task | Zentrale Aufgabe (Pflicht). Optional: `@pfad` fuer Task-Datei |
 | --dir | Arbeitsverzeichnis/Repo-Root (default: current dir) |
 | --timeout | Timeout pro Agent in Sekunden |
 | --apply | Versucht Diffs aus Agent-Outputs auf Workspace anzuwenden |
@@ -54,6 +141,8 @@ python multi_agent_codex.py \
 | --apply-roles | Welche Rollen angewendet werden (repeatable oder kommasepariert) |
 | --fail-fast | Bei Patch-Fehler sofort abbrechen (nur mit --apply) |
 | --ignore-fail | Exitcode immer 0, auch wenn Agenten fehlschlagen |
+| --task-split | Splittet die Aufgabe nach Ueberschriften und startet mehrere Runs |
+| --no-task-resume | Deaktiviert Resume fuer Task-Splitting (neu aufsetzen) |
 | --max-files | Max Dateien im Snapshot |
 | --max-file-bytes | Max Bytes pro Datei im Snapshot |
 
@@ -86,21 +175,30 @@ python multi_agent_codex.py \
 ```
 
 ## JSON Konfiguration
-### Hauptdatei: `config/main.json`
-- Die Ausfuehrungsreihenfolge und Auswahl der Rollen kommt ausschliesslich aus `roles` in `config/main.json`.
-- `system_rules`: System-Regeln fuer alle Agenten.
-- `final_role_id`: Rolle, deren Output als finale Kurz-Zusammenfassung genutzt wird.
-- `summary_max_chars` / `final_summary_max_chars`: Laengen fuer Zusammenfassungen.
-- `codex`: `env_var` und `default_cmd` fuer den Codex CLI Aufruf.
-- `paths`: Run-Ordner und Dateinamen fuer Snapshot/Apply-Log.
-- `coordination`: Task-Board + Log fuer parallele Rolleninstanzen.
-- `outputs`: Dateinamen-Schema fuer Agent-Outputs (z.B. `<role>_<instance>.md`).
-- `roles`: Liste der Rollen mit `id`, `file` und optional `apply_diff`.
-- `snapshot`: Steuerung des Workspace-Snapshots (Skip-Listen, Header, Format).
-- `agent_output`: Header-Strings fuer Agent-Output Dateien.
-- `messages`: Konsolen-Ausgaben und Fehlermeldungen.
-- `diff_messages`: Meldungen fuer das Patch-Apply.
-- `cli`: Beschreibung und Hilfe-Texte fuer argparse.
+`config/main.json` ist die zentrale Steuerdatei. Hier definierst du Rollen, Reihenfolge, Limits und das Verhalten beim Patch-Apply.
+
+### Uebersicht (Struktur)
+```mermaid
+flowchart LR
+    A[config/main.json] --> B[roles: config/roles/*.json]
+    A --> C[task_split / task_limits]
+    A --> D[snapshot / outputs / paths]
+    A --> E[diff_apply / diff_safety]
+    A --> F[codex / system_rules / messages]
+    D --> G[.multi_agent_runs/<run_id>/]
+    B --> G
+```
+
+### Wichtige Bereiche (kurz)
+- **roles**: Reihenfolge und Auswahl der Rollen, inkl. `instances`, `depends_on`, `apply_diff`.
+- **task_split**: Task-Splitting ueber Ueberschriften und Hybrid-Planung.
+  - `decision_mode`: `auto` (split nur wenn noetig) oder `always` (immer splitten).
+  - `llm_enabled`/`llm_cmd`: LLM-Planer aktivieren und optionalen Codex-Command setzen.
+- **task_limits**: Laengen-Limits fuer Tasks (Inline/Short/Dateiname).
+- **snapshot**: Umfang des Workspace-Snapshots (Skip-Listen, Groessen, Delta).
+- **outputs/paths**: Output-Pattern und Run-Verzeichnisse.
+- **diff_apply/diff_safety**: Patch-Apply und Blocklisten/Allowlists.
+- **codex/system_rules/messages**: CLI-Command, Systemregeln und Meldungen.
 
 ### Rollen: `config/roles/*.json`
 Jede Rolle ist eine eigene JSON-Datei mit:
@@ -166,6 +264,9 @@ flowchart TD
 - `--apply-mode` und `--apply-roles` geben Kontrolle ueber Zeitpunkt und Auswahl der Patch-Anwendung.
 - Status-Ausgabe enthaelt jetzt einen lesbaren Text (`OK`, `KEIN_BEITRAG`, `FEHLER`).
 - Snapshots ignorieren `.multi_agent_runs`, um Kontextgroesse zu reduzieren.
+- Lange Tasks werden automatisch gekuerzt; Volltext liegt pro Run in `.multi_agent_runs/<timestamp>/task_full.md` und wird im Prompt referenziert.
+- Task-Splitting (optional) legt Chunks unter `.multi_agent_runs/<split_id>/tasks/` an und speichert den Zwischenstand in `task_split.json` (Resume standardmaessig aktiv, via `--no-task-resume` aus).
+- Hybrid-Modus: Heuristik entscheidet, ob gesplittet wird; bei Bedarf plant ein LLM die Chunk-Gruppen nach Modulen/Features (Fallback: heuristisches Splitting).
 
 ## Beispielrolle
 Beispiel fuer eine neue Rolle in `config/roles/qa_guard.json`:

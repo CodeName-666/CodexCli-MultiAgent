@@ -24,6 +24,31 @@
       "gpt-4.1": 8000
     }
   },
+  "task_limits": {
+    "inline_max_chars": 2000,
+    "summary_max_chars": 1200,
+    "full_text_filename": "task_full.md"
+  },
+  "task_split": {
+    "enabled": false,
+    "auto_resume": true,
+    "decision_mode": "auto",
+    "heading_level": 2,
+    "chunk_min_chars": 600,
+    "chunk_max_chars": 4000,
+    "carry_over_max_chars": 1200,
+    "heuristic_max_chars": 3000,
+    "heuristic_max_tokens": 1200,
+    "heuristic_max_headings": 8,
+    "heuristic_token_chars": 4,
+    "llm_enabled": true,
+    "llm_timeout_sec": 120,
+    "llm_max_headings": 60,
+    "llm_cmd": "",
+    "output_dir": ".multi_agent_runs/<split_id>",
+    "manifest_filename": "task_split.json",
+    "carry_over_filename": "carry_over.md"
+  },
   "paths": {
     "run_dir": ".multi_agent_runs",
     "snapshot_filename": "snapshot.txt",
@@ -128,7 +153,7 @@
     }
   ],
   "snapshot": {
-    "skip_dirs": [".git", "__pycache__", "node_modules", ".venv", "venv", "dist", "build", ".idea", ".pytest_cache", ".mypy_cache", ".multi_agent_runs"],
+    "skip_dirs": [".git", "__pycache__", "node_modules", ".venv", "venv", "dist", "build", ".idea", ".pytest_cache", ".mypy_cache", ".multi_agent_runs", ".env"],
     "skip_exts": [".png", ".jpg", ".jpeg", ".gif", ".pdf", ".zip", ".gz", ".bin", ".exe", ".dll", ".so", ".dylib"],
     "workspace_header": "WORKSPACE: {root}",
     "files_header": "FILES:",
@@ -211,7 +236,7 @@
   "cli": {
     "description": "Multi-Agent Orchestrator f\u00fcr Codex CLI (Architect/Implementer/Tester/Reviewer/Integrator).",
     "args": {
-      "task": {"help": "Gesamtaufgabe / Problemstatement."},
+      "task": {"help": "Gesamtaufgabe / Problemstatement (optional: '@pfad' fuer Task-Datei)."},
       "dir": {"help": "Arbeitsverzeichnis/Repo-Root (default: current dir)."},
       "timeout": {"help": "Timeout pro Agent in Sekunden."},
       "apply": {"help": "Versucht Diffs aus Agent-Outputs auf Workspace anzuwenden."},
@@ -220,6 +245,8 @@
       "apply_confirm": {"help": "Diffs vor Anwendung bestaetigen."},
       "fail_fast": {"help": "Bei Patch-Fehler sofort abbrechen (nur mit --apply)."},
       "ignore_fail": {"help": "Exitcode immer 0, auch wenn Agenten fehlschlagen."},
+      "task_split": {"help": "Aktiviert Task-Splitting nach Ueberschriften (mehrere Runs)."},
+      "no_task_resume": {"help": "Deaktiviert Resume fuer Task-Splitting (neu aufsetzen)."},
       "max_files": {"help": "Max Dateien im Snapshot."},
       "max_file_bytes": {"help": "Max Bytes pro Datei im Snapshot."},
       "validate_config": {"help": "Validiert Konfiguration und bricht ab."}

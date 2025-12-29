@@ -35,6 +35,8 @@
     },
     "paths": {"type": "object"},
     "prompt_limits": {"type": "object"},
+    "task_limits": {"type": "object"},
+    "task_split": {"type": "object"},
     "snapshot": {"type": "object"},
     "agent_output": {"type": "object"},
     "messages": {"type": "object"},
