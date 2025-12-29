@@ -187,6 +187,88 @@ Verfuegbare Familien (Auswahl):
 - `config/product_main.json`, `config/qa_main.json`, `config/devops_main.json`
 - `config/security_main.json`, `config/data_main.json`, `config/docs_main.json`, `config/research_main.json`
 
+### Rollen-Familien (Einsatz & Rollen)
+#### developer (Softwareentwicklung)
+Zweck: klassische Implementierungspipeline fuer Code-Aenderungen.
+Rollen:
+- `architect`: entwirft Architektur, Plan und Risiken.
+- `implementer`: setzt um und liefert Diff.
+- `tester`: definiert Tests und liefert Diff.
+- `reviewer`: reviewt Aenderungen und liefert optional Diff.
+- `implementer_revision`: behebt kritische Findings und liefert Diff.
+- `integrator`: fasst zusammen und definiert naechste Schritte.
+
+#### designer (UI/UX Design + Umsetzung)
+Zweck: UI-Konzept bis zu implementierten UI-Aenderungen.
+Rollen:
+- `ui_architect`: Informationsarchitektur, Flows, Komponenten.
+- `ui_designer`: Design-Konzept und Layout-Entscheidungen.
+- `ui_implementer`: UI-Implementierung + Diff.
+- `ui_tester`: UI-Checks (A11y/Responsive/States) + Diff.
+- `ui_reviewer`: Review + optional Diff.
+- `ui_implementer_revision`: kritische Fixes + Diff.
+- `ui_integrator`: finale Zusammenfassung.
+
+#### product (Product/Requirements)
+Zweck: klare Anforderungen und Akzeptanzkriterien.
+Rollen:
+- `product_architect`: Ziele, Scope, Metriken, Risiken.
+- `requirements_writer`: User Stories, Akzeptanzkriterien.
+- `acceptance_reviewer`: Review der Anforderungen.
+- `product_integrator`: finale Zusammenfassung.
+
+#### qa (Quality Assurance)
+Zweck: Teststrategie, Testfaelle und Triage.
+Rollen:
+- `test_strategist`: Teststrategie und Abdeckung.
+- `test_author`: Testfaelle + Diff.
+- `test_executor`: Ausfuehrung/Erwartungen (ohne Diff).
+- `bug_triager`: Findings und Priorisierung.
+- `qa_integrator`: finale Zusammenfassung.
+
+#### devops (Platform/Release)
+Zweck: Infrastruktur, Pipeline, Releases.
+Rollen:
+- `infra_architect`: Infrastruktur- und Observability-Design.
+- `pipeline_implementer`: Pipeline-Implementierung + Diff.
+- `release_manager`: Rollout, Checks, Rollback.
+- `reliability_reviewer`: Reliability-Review.
+- `devops_integrator`: finale Zusammenfassung.
+
+#### security (Security/Compliance)
+Zweck: Threat-Modeling, Review und Fixes.
+Rollen:
+- `threat_modeler`: Bedrohungen und Mitigations.
+- `security_reviewer`: Security-Review.
+- `compliance_checker`: Policies/Abweichungen.
+- `security_fixer`: Sicherheits-Fixes + Diff.
+- `security_integrator`: finale Zusammenfassung.
+
+#### data (Data/ML)
+Zweck: Data/ML-Design, Pipeline, Evaluation.
+Rollen:
+- `model_designer`: Modellziel, Features, Risiken.
+- `data_engineer`: Datenpipeline + Diff.
+- `evaluator`: Metriken und Evaluation.
+- `ml_reviewer`: Review der ML-Ergebnisse.
+- `data_integrator`: finale Zusammenfassung.
+
+#### docs (Documentation)
+Zweck: Dokumentation und Tutorials.
+Rollen:
+- `tech_writer`: Doku-Struktur + Diff.
+- `tutorial_builder`: Tutorials + Diff.
+- `docs_reviewer`: Review der Doku.
+- `docs_integrator`: finale Zusammenfassung.
+
+#### research (Research/UX)
+Zweck: Research, UX-Analyse und A11y-Checks.
+Rollen:
+- `user_researcher`: Research-Methoden und Findings.
+- `ux_analyst`: Analyse, Hypothesen, Prioritaeten.
+- `a11y_reviewer`: A11y-Review.
+- `research_integrator`: finale Zusammenfassung.
+
 ### Uebersicht (Struktur)
 ```mermaid
 flowchart LR
