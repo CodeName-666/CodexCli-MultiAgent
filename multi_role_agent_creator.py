@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-multi_role_agent_creator.py - create a new role JSON and register it in config/developer_main.json.
+multi_role_agent_creator.py - create a new role JSON and register it in a main config.
 """
 
 from __future__ import annotations
@@ -275,7 +275,7 @@ def build_expected_sections(
 
 
 def parse_args(argv: List[str] | None = None) -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="Create a new role JSON and update config/developer_main.json.")
+    p = argparse.ArgumentParser(description="Create a new role JSON and update a main config file.")
     p.add_argument("--description", required=True, help="Role description used to build the prompt template.")
     p.add_argument("--id", dest="role_id", help="Role id (default: slugified description).")
     p.add_argument("--name", help="Role name (default: id).")
@@ -313,7 +313,7 @@ def parse_args(argv: List[str] | None = None) -> argparse.Namespace:
     p.add_argument(
         "--file",
         dest="role_file",
-        help="Role file path relative to config/ (default: developer_roles/<id>.json or designer_roles/<id>.json).",
+        help="Role file path relative to config/ (default: <family>_roles/<id>.json).",
     )
     p.add_argument("--apply-diff", action="store_true", help="Mark role as producing a diff to auto-apply.")
     p.add_argument("--diff-text", help="Custom diff instruction line for the prompt template.")
@@ -398,8 +398,12 @@ def main() -> None:
     role_label = (args.role_label or role_name).strip()
     title = (args.title or role_label).strip()
     default_role_dir = "developer_roles"
-    if args.config and "designer" in Path(args.config).name:
-        default_role_dir = "designer_roles"
+    if args.config:
+        stem = Path(args.config).stem
+        if stem.endswith("_main"):
+            prefix = stem[: -len("_main")]
+            if prefix:
+                default_role_dir = f"{prefix}_roles"
     role_file = args.role_file or f"{default_role_dir}/{role_id}.json"
     role_path, role_rel_path = resolve_role_path(base_dir, role_file)
 

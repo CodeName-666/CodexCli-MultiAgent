@@ -1,0 +1,297 @@
+{
+  "system_rules": "Du bist ein separater Agent in einem Multi-Agent-Workflow, der via Codex CLI ausgef\u00fchrt wird.\n\nWichtige Regeln:\n- Antworte strikt im geforderten FORMAT.\n- Keine unn\u00f6tigen Erkl\u00e4rungen au\u00dferhalb des Formats.\n- Sei pr\u00e4zise, umsetzungsorientiert und konsistent.\n- Wenn du Annahmen triffst, liste sie.\n",
+  "final_role_id": "product_integrator",
+  "summary_max_chars": 1400,
+  "final_summary_max_chars": 2400,
+  "codex": {
+    "env_var": "CODEX_CMD",
+    "default_cmd": "codex exec -"
+  },
+  "role_defaults": {
+    "timeout_sec": 1200,
+    "max_output_chars": 20000,
+    "max_prompt_chars": 14000,
+    "retries": 1,
+    "retry_backoff_sec": 1.0,
+    "retry_prompt_shrink": 0.85,
+    "snapshot_max_chars": 8000
+  },
+  "prompt_limits": {
+    "default_max_tokens": 3500,
+    "token_chars": 4,
+    "model_max_tokens": {
+      "gpt-4o": 8000,
+      "gpt-4.1": 8000
+    }
+  },
+  "task_limits": {
+    "inline_max_chars": 2000,
+    "summary_max_chars": 1200,
+    "full_text_filename": "task_full.md"
+  },
+  "task_split": {
+    "enabled": false,
+    "auto_resume": true,
+    "decision_mode": "auto",
+    "heading_level": 2,
+    "chunk_min_chars": 600,
+    "chunk_max_chars": 4000,
+    "carry_over_max_chars": 1200,
+    "heuristic_max_chars": 3000,
+    "heuristic_max_tokens": 1200,
+    "heuristic_max_headings": 8,
+    "heuristic_token_chars": 4,
+    "llm_enabled": true,
+    "llm_timeout_sec": 120,
+    "llm_max_headings": 60,
+    "llm_cmd": "",
+    "output_dir": ".multi_agent_runs/<split_id>",
+    "manifest_filename": "task_split.json",
+    "carry_over_filename": "carry_over.md"
+  },
+  "paths": {
+    "run_dir": ".multi_agent_runs",
+    "snapshot_filename": "snapshot.txt",
+    "apply_log_filename": "apply.log"
+  },
+  "coordination": {
+    "task_board": ".multi_agent_runs/<run_id>/task_board.json",
+    "channel": ".multi_agent_runs/<run_id>/coordination.log",
+    "lock_mode": "file_lock",
+    "claim_timeout_sec": 300,
+    "lock_timeout_sec": 10
+  },
+  "outputs": {
+    "pattern": "<role>_<instance>.md"
+  },
+  "roles": [
+    {
+      "id": "product_architect",
+      "file": "product_roles/product_architect.json",
+      "instances": 1,
+      "depends_on": [],
+      "expected_sections": [
+        "# Product-Architektur",
+        "- Ziele:",
+        "- Zielgruppe/Personas:",
+        "- Scope/Abgrenzung:",
+        "- Erfolgsmetriken:",
+        "- Risiken:",
+        "- Plan (max 8 Schritte):"
+      ],
+      "timeout_sec": 1800,
+      "max_prompt_chars": 16000
+    },
+    {
+      "id": "requirements_writer",
+      "file": "product_roles/requirements_writer.json",
+      "instances": 1,
+      "depends_on": [
+        "product_architect"
+      ],
+      "expected_sections": [
+        "# Anforderungen",
+        "- User Stories/Use Cases:",
+        "- Akzeptanzkriterien:",
+        "- Nicht-Ziele:",
+        "- Offene Punkte:"
+      ]
+    },
+    {
+      "id": "acceptance_reviewer",
+      "file": "product_roles/acceptance_reviewer.json",
+      "instances": 1,
+      "depends_on": [
+        "requirements_writer"
+      ],
+      "expected_sections": [
+        "# Review (Anforderungen)",
+        "- Findings:",
+        "- Risiko/Impact:",
+        "- Empfohlene Anpassungen:"
+      ]
+    },
+    {
+      "id": "product_integrator",
+      "file": "product_roles/product_integrator.json",
+      "instances": 1,
+      "depends_on": [
+        "product_architect",
+        "requirements_writer",
+        "acceptance_reviewer"
+      ],
+      "expected_sections": [
+        "# Final",
+        "- Zusammenfassung:",
+        "- Naechste Schritte:"
+      ]
+    }
+  ],
+  "snapshot": {
+    "skip_dirs": [
+      ".git",
+      "__pycache__",
+      "node_modules",
+      ".venv",
+      "venv",
+      "dist",
+      "build",
+      ".idea",
+      ".pytest_cache",
+      ".mypy_cache",
+      ".multi_agent_runs",
+      ".env"
+    ],
+    "skip_exts": [
+      ".png",
+      ".jpg",
+      ".jpeg",
+      ".gif",
+      ".pdf",
+      ".zip",
+      ".gz",
+      ".bin",
+      ".exe",
+      ".dll",
+      ".so",
+      ".dylib"
+    ],
+    "workspace_header": "WORKSPACE: {root}",
+    "files_header": "FILES:",
+    "content_header": "FILE CONTENT (truncated):",
+    "file_line": "  - {rel} ({size} bytes)",
+    "file_section_header": "--- {rel} ---",
+    "cache_file": ".multi_agent_runs/snapshot_cache.json",
+    "delta_snapshot": true,
+    "max_total_bytes": 800000,
+    "selective_context": {
+      "enabled": true,
+      "min_files": 6,
+      "max_files": 200
+    }
+  },
+  "agent_output": {
+    "agent_header": "## AGENT: {name} ({role})",
+    "returncode_header": "### Returncode",
+    "stdout_header": "### STDOUT",
+    "stderr_header": "### STDERR"
+  },
+  "messages": {
+    "error_task_empty": "Fehler: --task ist leer.",
+    "error_prompt_missing_key": "Fehler: Prompt f\u00fcr Rolle '{role_id}' braucht fehlenden Platzhalter '{key}'.",
+    "error_apply_roles_unknown": "Fehler: Unbekannte Rollen in --apply-roles: {roles}",
+    "role_rc1_error": "Fehler: Rolle {agent_name} lieferte rc=1. {error}",
+    "run_complete": "=== Multi-Agent Run fertig ===",
+    "workspace_label": "Workspace:  {workspace}",
+    "run_dir_label": "Run-Ordner: {run_dir}",
+    "status_header": "Status:",
+    "status_line": "- {agent_name:<11} rc={rc:<3} status={status:<12} ok={ok} -> {out_file}",
+    "status_ok": "OK",
+    "status_no_output": "KEIN_BEITRAG",
+    "status_error": "FEHLER",
+    "status_reason": "  Grund: {reason}",
+    "patch_apply_header": "Patch Apply:",
+    "integrator_output_header": "Integrator Output (Kurz):",
+    "apply_no_diff": "[{label}] Kein diff gefunden \u2013 \u00fcbersprungen.",
+    "apply_ok": "[{label}] {message}",
+    "apply_error": "[{label}] FEHLER: {message}",
+    "apply_skipped": "[{label}] Diff uebersprungen (Best\u00e4tigung abgelehnt).",
+    "interrupted": "Abgebrochen.",
+    "codex_not_found": "Fehler: Codex CLI nicht gefunden: {error}",
+    "codex_tip": "Tipp: Stelle sicher, dass `codex` im PATH ist oder setze CODEX_CMD."
+  },
+  "diff_messages": {
+    "no_git_header": "Kein 'diff --git' Header im Diff gefunden.",
+    "patch_applied": "Patch angewendet.",
+    "patch_applied_3way": "Patch angewendet (3-way).",
+    "patch_exception": "Patch apply exception: {error}",
+    "delete_file_error": "{rel_path}: konnte Datei nicht l\u00f6schen: {error}",
+    "no_hunks": "{rel_path}: keine Hunks (nichts zu tun).",
+    "context_mismatch": "{rel_path}: Kontext-Mismatch bei Zeile {line}: erwartet '{expected}', got '{got}'",
+    "delete_mismatch": "{rel_path}: Delete-Mismatch bei Zeile {line}: erwartet '{expected}', got '{got}'",
+    "unknown_prefix": "{rel_path}: Unbekanntes Prefix '{prefix}'",
+    "file_deleted": "{rel_path}: gel\u00f6scht.",
+    "file_updated": "{rel_path}: aktualisiert.",
+    "file_created": "{rel_path}: erstellt.",
+    "blocked_path": "Diff blockiert: {path}",
+    "git_apply_check_failed": "git apply --check fehlgeschlagen: {error}",
+    "git_apply_failed": "git apply fehlgeschlagen: {error}"
+  },
+  "diff_safety": {
+    "blocklist": [
+      "~/.ssh/*",
+      "config/*"
+    ],
+    "allowlist": [
+      "config/product_main.json",
+      "config/product_roles/*"
+    ]
+  },
+  "diff_apply": {
+    "use_git": true,
+    "use_3way": true,
+    "fallback_to_builtin": true
+  },
+  "logging": {
+    "jsonl_enabled": true,
+    "jsonl_path": ".multi_agent_runs/<run_id>/events.jsonl"
+  },
+  "feedback_loop": {
+    "enabled": true,
+    "critical_patterns": [
+      "critical",
+      "blocker",
+      "high"
+    ]
+  },
+  "cli": {
+    "description": "Multi-Agent Orchestrator fuer Product/Requirements Rollen.",
+    "args": {
+      "config": {
+        "help": "Pfad zur Konfigurationsdatei (z.B. config/developer_main.json)."
+      },
+      "task": {
+        "help": "Gesamtaufgabe / Problemstatement (optional: '@pfad' fuer Task-Datei)."
+      },
+      "dir": {
+        "help": "Arbeitsverzeichnis/Repo-Root (default: current dir)."
+      },
+      "timeout": {
+        "help": "Timeout pro Agent in Sekunden."
+      },
+      "apply": {
+        "help": "Versucht Diffs aus Agent-Outputs auf Workspace anzuwenden."
+      },
+      "apply_mode": {
+        "help": "Wann Diffs angewendet werden: end (nach allen Rollen) oder role (nach jeder Rolle)."
+      },
+      "apply_roles": {
+        "help": "Welche Rollen angewendet werden sollen (repeatable oder kommasepariert). Default: alle apply_diff-Rollen."
+      },
+      "apply_confirm": {
+        "help": "Diffs vor Anwendung bestaetigen."
+      },
+      "fail_fast": {
+        "help": "Bei Patch-Fehler sofort abbrechen (nur mit --apply)."
+      },
+      "ignore_fail": {
+        "help": "Exitcode immer 0, auch wenn Agenten fehlschlagen."
+      },
+      "task_split": {
+        "help": "Aktiviert Task-Splitting nach Ueberschriften (mehrere Runs)."
+      },
+      "no_task_resume": {
+        "help": "Deaktiviert Resume fuer Task-Splitting (neu aufsetzen)."
+      },
+      "max_files": {
+        "help": "Max Dateien im Snapshot."
+      },
+      "max_file_bytes": {
+        "help": "Max Bytes pro Datei im Snapshot."
+      },
+      "validate_config": {
+        "help": "Validiert Konfiguration und bricht ab."
+      }
+    }
+  }
+}

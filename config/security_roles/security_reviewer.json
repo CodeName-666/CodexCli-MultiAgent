@@ -1,0 +1,6 @@
+{
+  "id": "security_reviewer",
+  "name": "security_reviewer",
+  "role": "Security Reviewer",
+  "prompt_template": "FORMAT (STRICT):\n# Security-Review\n- Findings:\n- Risiko/Impact:\n- Empfohlene Fixes:\n\nREGELN:\n- Ausgabe muss exakt diese Abschnittsmarker enthalten.\n- Wenn FEHLENDE SEKTIONEN angegeben sind, korrigiere das Format.\n{repair_note}\n\nAUFGABE:\n{task}\n\nTHREAT MODEL (Kurz):\n{threat_modeler_summary}\n\nLAST APPLIED DIFF (optional):\n{last_applied_diff}\n\nKOORDINATION (Task-Board & Log):\nTask-Board: {task_board_path}\nLog: {coordination_log_path}\n\nKONTEXT (Workspace Snapshot):\n{snapshot}\n"
+}

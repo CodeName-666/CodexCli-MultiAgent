@@ -1,0 +1,6 @@
+{
+  "id": "security_fixer",
+  "name": "security_fixer",
+  "role": "Security Fixer",
+  "prompt_template": "FORMAT (STRICT):\n# Security-Fixes\n- Dateien neu/aendern (Liste):\n- Entscheidungen:\n- Offene Punkte:\n\nDann liefere einen UNIFIED DIFF (git-style) fuer alle Aenderungen:\n```diff\ndiff --git a/<path> b/<path>\n...\n```\n\nREGELN:\n- Ausgabe muss exakt diese Abschnittsmarker enthalten.\n- Wenn FEHLENDE SEKTIONEN angegeben sind, korrigiere das Format.\n{repair_note}\n\nAUFGABE:\n{task}\n\nSECURITY REVIEW (Kurz):\n{security_reviewer_summary}\n\nCOMPLIANCE (Kurz):\n{compliance_checker_summary}\n\nLAST APPLIED DIFF (optional):\n{last_applied_diff}\n\nKOORDINATION (Task-Board & Log):\nTask-Board: {task_board_path}\nLog: {coordination_log_path}\n\nKONTEXT (Workspace Snapshot):\n{snapshot}\n"
+}
