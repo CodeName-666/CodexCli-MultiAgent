@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-multi_role_agent_creator.py - create a new role JSON and register it in config/main.json.
+multi_role_agent_creator.py - create a new role JSON and register it in config/developer_main.json.
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ from typing import Dict, List, Tuple
 
 from multi_agent.utils import get_codex_cmd, parse_cmd
 
-DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent / "config" / "main.json"
+DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent / "config" / "developer_main.json"
 DEFAULT_FORMAT_SECTIONS = ["- Aufgaben:", "- Entscheidungen:", "- Offene Punkte:"]
 DEFAULT_RULE_LINES = [
     "Ausgabe muss exakt diese Abschnittsmarker enthalten.",
@@ -275,7 +275,7 @@ def build_expected_sections(
 
 
 def parse_args(argv: List[str] | None = None) -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="Create a new role JSON and update config/main.json.")
+    p = argparse.ArgumentParser(description="Create a new role JSON and update config/developer_main.json.")
     p.add_argument("--description", required=True, help="Role description used to build the prompt template.")
     p.add_argument("--id", dest="role_id", help="Role id (default: slugified description).")
     p.add_argument("--name", help="Role name (default: id).")
@@ -310,7 +310,11 @@ def parse_args(argv: List[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Use only the provided --rule lines (skip the defaults).",
     )
-    p.add_argument("--file", dest="role_file", help="Role file path relative to config/ (default: roles/<id>.json).")
+    p.add_argument(
+        "--file",
+        dest="role_file",
+        help="Role file path relative to config/ (default: developer_roles/<id>.json or designer_roles/<id>.json).",
+    )
     p.add_argument("--apply-diff", action="store_true", help="Mark role as producing a diff to auto-apply.")
     p.add_argument("--diff-text", help="Custom diff instruction line for the prompt template.")
     diff_group = p.add_mutually_exclusive_group()
@@ -355,7 +359,7 @@ def parse_args(argv: List[str] | None = None) -> argparse.Namespace:
     p.add_argument("--no-coordination", action="store_true", help="Skip the coordination block.")
     p.add_argument("--no-snapshot", action="store_true", help="Skip the workspace snapshot block.")
     p.add_argument("--no-expected-diff", action="store_true", help="Remove ```diff from expected sections.")
-    p.add_argument("--config", default=str(DEFAULT_CONFIG_PATH), help="Path to main.json config.")
+    p.add_argument("--config", default=str(DEFAULT_CONFIG_PATH), help="Path to main config (e.g. config/developer_main.json).")
     p.add_argument("--force", action="store_true", help="Overwrite existing role file and id entry.")
     return p.parse_args(argv)
 
@@ -393,7 +397,10 @@ def main() -> None:
     role_name = (args.name or role_id).strip()
     role_label = (args.role_label or role_name).strip()
     title = (args.title or role_label).strip()
-    role_file = args.role_file or f"roles/{role_id}.json"
+    default_role_dir = "developer_roles"
+    if args.config and "designer" in Path(args.config).name:
+        default_role_dir = "designer_roles"
+    role_file = args.role_file or f"{default_role_dir}/{role_id}.json"
     role_path, role_rel_path = resolve_role_path(base_dir, role_file)
 
     if role_path.exists() and not args.force:

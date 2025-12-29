@@ -67,7 +67,7 @@
   "roles": [
     {
       "id": "architect",
-      "file": "roles/architect.json",
+      "file": "developer_roles/architect.json",
       "instances": 1,
       "depends_on": [],
       "timeout_sec": 1800,
@@ -84,7 +84,7 @@
     },
     {
       "id": "implementer",
-      "file": "roles/implementer.json",
+      "file": "developer_roles/implementer.json",
       "apply_diff": true,
       "instances": 1,
       "depends_on": ["architect"],
@@ -98,7 +98,7 @@
     },
     {
       "id": "tester",
-      "file": "roles/tester.json",
+      "file": "developer_roles/tester.json",
       "apply_diff": true,
       "instances": 1,
       "depends_on": ["implementer"],
@@ -112,7 +112,7 @@
     },
     {
       "id": "reviewer",
-      "file": "roles/reviewer.json",
+      "file": "developer_roles/reviewer.json",
       "apply_diff": true,
       "instances": 1,
       "depends_on": ["tester"],
@@ -127,7 +127,7 @@
     },
     {
       "id": "implementer_revision",
-      "file": "roles/implementer_revision.json",
+      "file": "developer_roles/implementer_revision.json",
       "apply_diff": true,
       "instances": 1,
       "depends_on": ["reviewer"],
@@ -142,7 +142,7 @@
     },
     {
       "id": "integrator",
-      "file": "roles/integrator.json",
+      "file": "developer_roles/integrator.json",
       "instances": 1,
       "depends_on": ["architect", "implementer", "tester", "reviewer", "implementer_revision"],
       "expected_sections": [
@@ -218,7 +218,12 @@
   },
   "diff_safety": {
     "blocklist": ["~/.ssh/*", "config/*"],
-    "allowlist": ["config/main.json", "config/roles/*"]
+    "allowlist": [
+      "config/developer_main.json",
+      "config/designer_main.json",
+      "config/developer_roles/*",
+      "config/designer_roles/*"
+    ]
   },
   "diff_apply": {
     "use_git": true,
@@ -236,6 +241,7 @@
   "cli": {
     "description": "Multi-Agent Orchestrator f\u00fcr Codex CLI (Architect/Implementer/Tester/Reviewer/Integrator).",
     "args": {
+      "config": {"help": "Pfad zur Konfigurationsdatei (z.B. config/developer_main.json)."},
       "task": {"help": "Gesamtaufgabe / Problemstatement (optional: '@pfad' fuer Task-Datei)."},
       "dir": {"help": "Arbeitsverzeichnis/Repo-Root (default: current dir)."},
       "timeout": {"help": "Timeout pro Agent in Sekunden."},

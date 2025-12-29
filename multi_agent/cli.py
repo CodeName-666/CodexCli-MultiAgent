@@ -32,6 +32,8 @@ def parse_args(cfg, argv: Optional[List[str]] = None) -> argparse.Namespace:
     cli = cfg.cli
     args_cfg = cli["args"]
     p = argparse.ArgumentParser(description=str(cli["description"]))
+    config_help = str(args_cfg.get("config", {}).get("help") or "Pfad zur Konfigurationsdatei.")
+    p.add_argument("--config", default=str(DEFAULT_CONFIG_PATH), help=config_help)
     p.add_argument("--task", required=True, help=str(args_cfg["task"]["help"]))
     p.add_argument("--dir", default=".", help=str(args_cfg["dir"]["help"]))
     p.add_argument("--timeout", type=int, default=DEFAULT_TIMEOUT_SEC, help=str(args_cfg["timeout"]["help"]))
@@ -62,6 +64,13 @@ def parse_args(cfg, argv: Optional[List[str]] = None) -> argparse.Namespace:
     )
     p.add_argument("--validate-config", action="store_true", help=str(args_cfg["validate_config"]["help"]))
     return p.parse_args(argv)
+
+
+def _parse_config_path(argv: Optional[List[str]]) -> Path:
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("--config", default=str(DEFAULT_CONFIG_PATH))
+    args, _ = parser.parse_known_args(argv)
+    return Path(args.config)
 
 
 async def _run_split(pipeline, args: argparse.Namespace, cfg) -> int:
@@ -170,8 +179,9 @@ async def _run_split(pipeline, args: argparse.Namespace, cfg) -> int:
 
 
 def main() -> None:
+    config_path = _parse_config_path(None)
     try:
-        cfg = load_app_config(DEFAULT_CONFIG_PATH)
+        cfg = load_app_config(config_path)
     except FileNotFoundError as e:
         print(f"Fehler: Konfigurationsdatei nicht gefunden: {e}", file=sys.stderr)
         sys.exit(2)
@@ -183,7 +193,7 @@ def main() -> None:
     if args.validate_config:
         from .schema_validator import validate_config
 
-        ok, error = validate_config(DEFAULT_CONFIG_PATH)
+        ok, error = validate_config(Path(args.config))
         if not ok:
             print(f"Fehler: Konfiguration ungueltig: {error}", file=sys.stderr)
             sys.exit(2)

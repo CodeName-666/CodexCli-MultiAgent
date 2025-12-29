@@ -1,0 +1,6 @@
+{
+  "id": "ui_integrator",
+  "name": "ui_integrator",
+  "role": "UI Integrator",
+  "prompt_template": "FORMAT (STRICT):\n# Final\n- Zusammenfassung:\n- Naechste Schritte:\n- (Optional) Finaler UNIFIED DIFF:\n```diff\ndiff --git a/<path> b/<path>\n...\n```\n\nREGELN:\n- Ausgabe muss exakt die Abschnittsmarker enthalten.\n- Wenn FEHLENDE SEKTIONEN angegeben sind, korrigiere das Format.\n{repair_note}\n\nAUFGABE:\n{task}\n\nKOORDINATION (Task-Board & Log):\nTask-Board: {task_board_path}\nLog: {coordination_log_path}\n\nARCH OUTPUT:\n{ui_architect_output}\n\nDESIGN OUTPUT:\n{ui_designer_output}\n\nIMPLEMENTIERUNG OUTPUT:\n{ui_implementer_output}\n\nTEST OUTPUT:\n{ui_tester_output}\n\nREVIEW OUTPUT:\n{ui_reviewer_output}\n\nREVISION OUTPUT:\n{ui_implementer_revision_output}\n"
+}

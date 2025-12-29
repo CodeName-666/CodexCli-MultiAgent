@@ -56,7 +56,7 @@ ist nur der CLI-Entrypoint; die wirklichen Hebel liegen in `multi_agent/` und de
 
 ## Konfiguration und DX (Developer Experience)
 - **Schema-Validierung fuer JSON**:
-  - JSON-Schema fuer `config/main.json` und `config/roles/*.json`.
+  - JSON-Schema fuer `config/developer_main.json` (oder `config/designer_main.json`) und `config/developer_roles/*.json` (oder `config/designer_roles/*.json`).
   - CLI: `--validate-config` vor dem Run.
 - **Per-Rollen-Optionen**:
   - `timeout_sec`, `max_output_chars`, `max_prompt_chars`, `retries`.

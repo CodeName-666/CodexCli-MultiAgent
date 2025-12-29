@@ -48,7 +48,8 @@ Task-Splitting ueber Ueberschriften (mehrere Runs):
 ```bash
 python multi_agent_codex.py --task "@implementierer.md" --task-split
 ```
-Ob gesplittet wird, steuert `task_split.decision_mode` in `config/main.json` (`auto` oder `always`).
+Ob gesplittet wird, steuert `task_split.decision_mode` in `config/developer_main.json` (`auto` oder `always`).
+Standard ist `config/developer_main.json` (mit `--config` kannst du eine andere Datei waehlen, z.B. `config/designer_main.json`).
 
 ### Wann benutze ich `@pfad`?
 - **Ohne @**: kurze, einfache Aufgaben direkt im CLI (inline).
@@ -116,9 +117,13 @@ Ausfuehren mit Datei-Task:
 ```bash
 python multi_agent_codex.py --task "@tasks/feature_x.md"
 ```
+Design-Rollen verwenden (UI-Rollen):
+```bash
+python multi_agent_codex.py --config config/designer_main.json --task "@tasks/feature_x.md"
+```
 Erwartete Artefakte (pro Run):
-- `config/main.json` steuert, welche Rollen laufen.
-- `config/roles/*.json` enthalten die Rollen-Prompts.
+- `config/developer_main.json` (oder `config/designer_main.json`) steuert, welche Rollen laufen.
+- `config/developer_roles/*.json` bzw. `config/designer_roles/*.json` enthalten die Rollen-Prompts.
 - `.multi_agent_runs/<timestamp>/` mit `*.md` Outputs und `snapshot.txt`.
 
 ## Nutzung
@@ -133,6 +138,7 @@ python multi_agent_codex.py \
 ### multi_agent_codex.py
 | Flag | Beschreibung |
 |-----|--------------|
+| --config | Pfad zur Konfigurationsdatei (z.B. `config/developer_main.json`) |
 | --task | Zentrale Aufgabe (Pflicht). Optional: `@pfad` fuer Task-Datei |
 | --dir | Arbeitsverzeichnis/Repo-Root (default: current dir) |
 | --timeout | Timeout pro Agent in Sekunden |
@@ -157,7 +163,7 @@ python multi_agent_codex.py \
 | --context | Zus. Platzhalter (key oder key:Label) |
 | --apply-diff | Markiert Rolle als Diff-Lieferant |
 | --insert-after | Fuegt Rolle nach einer Rolle ein |
-| --config | Pfad zu `config/main.json` |
+| --config | Pfad zu `config/developer_main.json` (oder `config/designer_main.json`) |
 | --force | Ueberschreibt vorhandene Rolle/Datei |
 
 ## Struktur
@@ -175,18 +181,24 @@ python multi_agent_codex.py \
 ```
 
 ## JSON Konfiguration
-`config/main.json` ist die zentrale Steuerdatei. Hier definierst du Rollen, Reihenfolge, Limits und das Verhalten beim Patch-Apply.
+`config/developer_main.json` (oder `config/designer_main.json`) ist die zentrale Steuerdatei. Hier definierst du Rollen, Reihenfolge, Limits und das Verhalten beim Patch-Apply.
 
 ### Uebersicht (Struktur)
 ```mermaid
 flowchart LR
-    A[config/main.json] --> B[roles: config/roles/*.json]
-    A --> C[task_split / task_limits]
-    A --> D[snapshot / outputs / paths]
-    A --> E[diff_apply / diff_safety]
-    A --> F[codex / system_rules / messages]
+    A1[config/developer_main.json] --> B1[roles: config/developer_roles/*.json]
+    A2[config/designer_main.json] --> B2[roles: config/designer_roles/*.json]
+    A1 --> C[task_split / task_limits]
+    A2 --> C
+    A1 --> D[snapshot / outputs / paths]
+    A2 --> D
+    A1 --> E[diff_apply / diff_safety]
+    A2 --> E
+    A1 --> F[codex / system_rules / messages]
+    A2 --> F
     D --> G[.multi_agent_runs/<run_id>/]
-    B --> G
+    B1 --> G
+    B2 --> G
 ```
 
 ### Wichtige Bereiche (kurz)
@@ -200,16 +212,30 @@ flowchart LR
 - **diff_apply/diff_safety**: Patch-Apply und Blocklisten/Allowlists.
 - **codex/system_rules/messages**: CLI-Command, Systemregeln und Meldungen.
 
-### Rollen: `config/roles/*.json`
+### Rollen: `config/developer_roles/*.json` und `config/designer_roles/*.json`
 Jede Rolle ist eine eigene JSON-Datei mit:
-- `id`: Rollen-ID (muss zu `config/main.json` passen).
+- `id`: Rollen-ID (muss zur gewaehlten Hauptdatei passen).
 - `name`: Name des Agents (default: id).
 - `role`: Rollenbezeichnung fuer die Ausgabe.
 - `prompt_template`: Prompt-Template mit Platzhaltern wie `{task}`, `{snapshot}`,
   `{architect_summary}`, `{implementer_summary}`, `{tester_summary}` oder
   `{<rolle>_output}`.
-In `config/main.json` pro Rolle zusaetzlich:
+In der jeweiligen Hauptdatei pro Rolle zusaetzlich:
 - `instances`: Anzahl paralleler Instanzen (default: 1).
+
+Beispiel: UI-Rollen (Auszug aus `config/designer_main.json`)
+```json
+"roles": [
+  { "id": "ui_architect", "file": "designer_roles/ui_architect.json", "instances": 1 },
+  { "id": "ui_designer", "file": "designer_roles/ui_designer.json", "instances": 1, "depends_on": ["ui_architect"] },
+  { "id": "ui_implementer", "file": "designer_roles/ui_implementer.json", "apply_diff": true, "depends_on": ["ui_designer"] },
+  { "id": "ui_tester", "file": "designer_roles/ui_tester.json", "apply_diff": true, "depends_on": ["ui_implementer"] },
+  { "id": "ui_reviewer", "file": "designer_roles/ui_reviewer.json", "apply_diff": true, "depends_on": ["ui_tester"] },
+  { "id": "ui_implementer_revision", "file": "designer_roles/ui_implementer_revision.json", "apply_diff": true, "depends_on": ["ui_reviewer"], "run_if_review_critical": true },
+  { "id": "ui_integrator", "file": "designer_roles/ui_integrator.json", "depends_on": ["ui_architect","ui_designer","ui_implementer","ui_tester","ui_reviewer","ui_implementer_revision"] }
+],
+"final_role_id": "ui_integrator"
+```
 
 ### Standard-Platzhalter
 In jedem `prompt_template` verfuegbar:
@@ -222,7 +248,7 @@ In jedem `prompt_template` verfuegbar:
 - `{<rolle>_output}`: Voller Output der Rolle (z.B. `{reviewer_output}`).
 
 ## Rollen-Ablauf
-- Rollen laufen sequentiell in der Reihenfolge aus `config/main.json`.
+- Rollen laufen sequentiell in der Reihenfolge der gewaehlten Hauptdatei.
 - `apply_diff: true` markiert Rollen, deren Diffs bei `--apply` angewendet werden.
 - `--apply-mode role` wendet Diffs direkt nach der Rolle an und erzeugt einen frischen Snapshot.
 - Die finale Kurz-Ausgabe stammt von `final_role_id`.
@@ -269,7 +295,7 @@ flowchart TD
 - Hybrid-Modus: Heuristik entscheidet, ob gesplittet wird; bei Bedarf plant ein LLM die Chunk-Gruppen nach Modulen/Features (Fallback: heuristisches Splitting).
 
 ## Beispielrolle
-Beispiel fuer eine neue Rolle in `config/roles/qa_guard.json`:
+Beispiel fuer eine neue Rolle in `config/developer_roles/qa_guard.json`:
 ```json
 {
   "id": "qa_guard",
@@ -280,13 +306,13 @@ Beispiel fuer eine neue Rolle in `config/roles/qa_guard.json`:
 ```
 
 ## Erweiterung
-- Weitere Agenten in `config/main.json` registrieren und eigenes JSON in `config/roles/` anlegen
+- Weitere Agenten in der Hauptdatei registrieren und eigenes JSON in `config/developer_roles/` oder `config/designer_roles/` anlegen
 - Planner/Worker-Pattern möglich
 - CI-Integration empfohlen
 
 ## Multi Role Agent Creator
 Mit `multi_role_agent_creator.py` kannst du aus einer Beschreibung eine neue Rolle erzeugen
-und automatisch in `config/main.json` registrieren lassen.
+und automatisch in `config/developer_main.json` (oder einer anderen Hauptdatei) registrieren lassen.
 
 ### Beispiel
 ```bash
@@ -309,7 +335,7 @@ python3 multi_role_agent_creator.py \
 | --context | Zus. Platzhalter (key oder key:Label) |
 | --apply-diff | Markiert Rolle als Diff-Lieferant |
 | --insert-after | Fuegt Rolle nach einer Rolle ein |
-| --config | Pfad zu `config/main.json` |
+| --config | Pfad zu `config/developer_main.json` (oder `config/designer_main.json`) |
 | --force | Ueberschreibt vorhandene Rolle/Datei |
 
 ## Lizenz
