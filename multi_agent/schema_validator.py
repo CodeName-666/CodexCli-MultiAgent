@@ -46,6 +46,8 @@ def validate_config(config_path: Path) -> Tuple[bool, str]:
         return False, "roles must be a list"
 
     base_dir = config_path.parent
+    role_defaults = cfg.get("role_defaults", {})
+
     for role_entry in roles:
         if not isinstance(role_entry, dict):
             return False, "role entry must be an object"
@@ -61,5 +63,55 @@ def validate_config(config_path: Path) -> Tuple[bool, str]:
         ok, error = _validate_required(role_data, ["id", "role", "prompt_template"])
         if not ok:
             return False, f"role {role_path}: {error}"
+
+        # Validate sharding configuration
+        ok, error = _validate_sharding_config(role_entry, role_defaults)
+        if not ok:
+            return False, f"role {role_path}: {error}"
+
+    return True, ""
+
+
+def _validate_sharding_config(role_entry: Dict[str, object], role_defaults: Dict[str, object]) -> Tuple[bool, str]:
+    """Validate sharding-related configuration fields."""
+    shard_mode = role_entry.get("shard_mode", role_defaults.get("shard_mode", "none"))
+    overlap_policy = role_entry.get("overlap_policy", role_defaults.get("overlap_policy", "warn"))
+
+    # Validate shard_mode enum
+    valid_shard_modes = ["none", "headings", "files", "llm"]
+    if shard_mode not in valid_shard_modes:
+        return False, f"invalid shard_mode '{shard_mode}', must be one of {valid_shard_modes}"
+
+    # Validate overlap_policy enum
+    valid_overlap_policies = ["forbid", "warn", "allow"]
+    if overlap_policy not in valid_overlap_policies:
+        return False, f"invalid overlap_policy '{overlap_policy}', must be one of {valid_overlap_policies}"
+
+    # Validate numeric fields
+    shard_count = role_entry.get("shard_count", role_defaults.get("shard_count"))
+    if shard_count is not None:
+        try:
+            count = int(shard_count)
+            if count < 1:
+                return False, "shard_count must be >= 1"
+        except (TypeError, ValueError):
+            return False, "shard_count must be an integer"
+
+    max_files_per_shard = role_entry.get("max_files_per_shard", role_defaults.get("max_files_per_shard", 10))
+    if max_files_per_shard is not None:
+        try:
+            count = int(max_files_per_shard)
+            if count < 1:
+                return False, "max_files_per_shard must be >= 1"
+        except (TypeError, ValueError):
+            return False, "max_files_per_shard must be an integer"
+
+    max_reshard_depth = role_entry.get("max_reshard_depth", role_defaults.get("max_reshard_depth", 2))
+    try:
+        depth = int(max_reshard_depth)
+        if depth < 0:
+            return False, "max_reshard_depth must be >= 0"
+    except (TypeError, ValueError):
+        return False, "max_reshard_depth must be an integer"
 
     return True, ""
