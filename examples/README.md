@@ -6,7 +6,7 @@ Dieses Verzeichnis enthält Beispielkonfigurationen und Tasks für das Sharding-
 
 ### Konfigurationen
 
-**`sharding_basic_config.json`**
+**`sharding_basic_config.json`** (Developer-Familie)
 - Einfaches Setup mit nur einer Role (implementer)
 - 3 Instanzen mit `shard_mode=headings`
 - Ideal zum Testen und Kennenlernen
@@ -16,6 +16,21 @@ Dieses Verzeichnis enthält Beispielkonfigurationen und Tasks für das Sharding-
 python -m multi_agent.cli \
   --config examples/sharding_basic_config.json \
   --task "@examples/task_three_features.md"
+```
+
+---
+
+**`designer_sharding_config.json`** (Designer-Familie) 🎨
+- UI-Design Pipeline mit 3 Roles
+- ui_designer mit 3 Instanzen (parallel)
+- ux_reviewer + design_integrator (sequenziell)
+- Demonstriert Sharding für Non-Code-Aufgaben
+
+**Verwendung:**
+```bash
+python -m multi_agent.cli \
+  --config examples/designer_sharding_config.json \
+  --task "@examples/designer_task_ui_components.md"
 ```
 
 ---
@@ -36,7 +51,7 @@ python -m multi_agent.cli \
 
 ### Tasks
 
-**`task_three_features.md`**
+**`task_three_features.md`** (Developer)
 - Beispiel-Task mit 3 klar abgegrenzten Features
 - Strukturiert für optimales Heading-based Sharding
 - Jedes Feature hat Goal, Allowed Paths, Requirements, DoD
@@ -45,6 +60,18 @@ python -m multi_agent.cli \
 - 3 H1-Headings → 3 Shards
 - Bei 3 Instances: Jede Instanz bekommt 1 Feature
 - Bei 4 Instances: Greedy-Verteilung (1 Instance idle oder doppelt)
+
+---
+
+**`designer_task_ui_components.md`** (Designer) 🎨
+- UI-Design Task mit 3 Components
+- Profile Card, Dashboard, Navigation Menu
+- Zeigt, dass Sharding auch für Non-Code (Design, Docs, etc.) funktioniert
+
+**Erwartetes Verhalten:**
+- 3 H1-Headings → 3 Shards
+- 3 UI-Designer arbeiten parallel an 3 Components
+- Outputs sind Design-Specs statt Code-Diffs
 
 ## Erwartete Outputs
 
