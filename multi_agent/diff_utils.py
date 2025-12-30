@@ -74,8 +74,15 @@ def check_path_matches_globs(filepath: str, glob_patterns: list[str]) -> bool:
 
     path = Path(filepath)
     for pattern in glob_patterns:
-        # Convert glob pattern to Path and use match
-        if path.match(pattern):
+        # PurePath.match() matches from the right, so "multi_agent/**" won't match "multi_agent/sub/file.py"
+        # We need to check if the path starts with the pattern prefix
+        if pattern.endswith("/**"):
+            # For directory wildcards, check if path starts with the directory
+            dir_prefix = pattern[:-3]  # Remove "/**"
+            if filepath.startswith(dir_prefix + "/") or filepath == dir_prefix:
+                return True
+        # Use match for other patterns
+        elif path.match(pattern):
             return True
 
     return False

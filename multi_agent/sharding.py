@@ -77,7 +77,8 @@ def _plan_shards_by_headings(
     Returns:
         List of Shard objects
     """
-    headings = extract_headings(task_text, max_level=3)  # H1, H2, H3
+    # Extract only H1 headings as main section dividers
+    headings = extract_headings(task_text, max_level=1)  # Only H1
 
     if not headings:
         # No headings found, create single shard with full text
@@ -169,7 +170,7 @@ def _extract_section_metadata(section_text: str) -> tuple[str, List[str]]:
             current_section = "allowed_paths"
             continue
         elif line_stripped.startswith("#"):
-            # Different heading, stop extracting
+            # Different heading, stop extracting from current section
             current_section = None
             continue
 
@@ -177,14 +178,16 @@ def _extract_section_metadata(section_text: str) -> tuple[str, List[str]]:
         if current_section == "goal" and line_stripped:
             goal = line_stripped
             current_section = None  # Only take first line as goal
-        elif current_section == "allowed_paths":
-            # Extract paths from list items or plain lines
+        elif current_section == "allowed_paths" and line_stripped:
+            # Extract paths from list items only
             if line_stripped.startswith("-") or line_stripped.startswith("*"):
                 path = line_stripped[1:].strip()
                 if path:
                     allowed_paths.append(path)
-            elif line_stripped and not line_stripped.startswith("#"):
-                allowed_paths.append(line_stripped)
+            # Stop at non-list-item lines (but continue if empty line)
+            elif not line_stripped.startswith("#"):
+                # Empty line or non-list content - could be end of list
+                pass
 
     return goal, allowed_paths
 
@@ -350,7 +353,7 @@ def _extract_paths_from_text(text: str) -> List[str]:
     paths: List[str] = []
 
     # Pattern for file paths (containing / or ending in common extensions)
-    path_pattern = re.compile(r'([a-zA-Z0-9_\-./]+(?:/[a-zA-Z0-9_\-./]+)+|[a-zA-Z0-9_\-./]+\.(?:py|json|md|txt|yaml|yml|toml|ini|cfg|conf|js|ts|tsx|jsx))')
+    path_pattern = re.compile(r'([a-zA-Z0-9_\-/]+(?:/[a-zA-Z0-9_\-./]+)+|[a-zA-Z0-9_\-/]+\.(?:py|json|md|txt|yaml|yml|toml|ini|cfg|conf|js|ts|tsx|jsx))')
 
     # Extract from backticks
     backtick_pattern = re.compile(r'`([^`]+)`')
@@ -375,7 +378,7 @@ def _extract_paths_from_text(text: str) -> List[str]:
 
     # Deduplicate and normalize
     unique_paths = list(dict.fromkeys(paths))
-    normalized = [Path(p).as_posix() for p in unique_paths if p]
+    normalized = [Path(p).as_posix().rstrip(".") for p in unique_paths if p]
 
     return normalized
 
