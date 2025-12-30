@@ -5,6 +5,24 @@ Dieses Projekt stellt ein vollständiges Python-basiertes Multi-Agent-System dar
 das mithilfe der **Codex CLI** mehrere spezialisierte Agenten parallel oder sequentiell
 auf eine Software-Entwicklungsaufgabe ansetzt.
 
+### ✨ Neue Features: Echte Parallelität via Sharding
+**NEU in V1.0:** Statt dass alle Instanzen einer Rolle denselben Task erhalten (Ensemble-Modus),
+kann der Task nun automatisch in **Shards** (Subtasks) aufgeteilt werden. Jede Instanz bearbeitet
+parallel einen eigenen Shard → **echte parallele Ausführung** ohne Redundanz!
+
+**Quick Start Sharding:**
+```json
+{
+  "roles": [{
+    "id": "implementer",
+    "instances": 3,
+    "shard_mode": "headings"  // ← Neue Option!
+  }]
+}
+```
+
+📖 **[Vollständige Sharding-Dokumentation](docs/SHARDING.md)**
+
 ### Enthaltene Agenten
 - **Architect** – entwirft Architektur & Plan
 - **Implementer** – implementiert Features (liefert Unified Diff)
@@ -133,6 +151,58 @@ python multi_agent_codex.py \
   --dir . \
   --apply
 ```
+
+## Sharding Configuration (NEW)
+
+### Config-Felder für Sharding
+Erweitere deine `role_defaults` oder einzelne Roles in `config/<family>_main.json`:
+
+```json
+{
+  "role_defaults": {
+    "shard_mode": "headings",
+    "overlap_policy": "warn",
+    "enforce_allowed_paths": false
+  },
+  "roles": [
+    {
+      "id": "implementer",
+      "instances": 3,
+      "shard_mode": "headings"  // Überschreibt role_defaults
+    }
+  ]
+}
+```
+
+| Feld | Typ | Default | Beschreibung |
+|------|-----|---------|---------------|
+| `shard_mode` | string | `"none"` | `none` (Ensemble), `headings` (H1-basiert), `files` (Pfad-basiert) |
+| `shard_count` | int? | `instances` | Anzahl Shards (überschreibt Auto-Detection) |
+| `overlap_policy` | string | `"warn"` | `forbid` (abort bei Overlap), `warn` (continue), `allow` (keine Prüfung) |
+| `enforce_allowed_paths` | bool | `false` | Erzwingt, dass Instanzen nur erlaubte Pfade ändern |
+
+**Task-Struktur für Heading-Mode:**
+```markdown
+# Feature A: Authentication
+Implement JWT-based authentication...
+
+# Feature B: Database Schema
+Create user and session models...
+
+# Feature C: API Endpoints
+Implement /login and /logout endpoints...
+```
+
+→ 3 Shards für 3 Instanzen, jede bekommt ein Feature
+
+**Output-Artefakte:**
+- `<role>_shard_plan.json` - Shard-Plan (Debug)
+- `<role>_shard_summary.json` - Validation-Report
+- `<role>_overlaps.json` - Falls Overlaps erkannt
+
+📖 **Details:** [docs/SHARDING.md](docs/SHARDING.md)
+
+---
 
 ## Wichtige Flags
 ### multi_agent_codex.py

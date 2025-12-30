@@ -1,0 +1,19 @@
+{
+  "role_defaults": {
+    "instances": 1,
+    "timeout_sec": 1800,
+    "shard_mode": "none",
+    "overlap_policy": "warn",
+    "enforce_allowed_paths": false
+  },
+  "roles": [
+    {
+      "id": "implementer",
+      "file": "../config/developer_roles/implementer.json",
+      "instances": 3,
+      "shard_mode": "headings",
+      "apply_diff": true,
+      "depends_on": []
+    }
+  ]
+}

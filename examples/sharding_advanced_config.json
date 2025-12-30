@@ -1,0 +1,54 @@
+{
+  "role_defaults": {
+    "instances": 1,
+    "timeout_sec": 1800,
+    "shard_mode": "none",
+    "overlap_policy": "warn",
+    "enforce_allowed_paths": false,
+    "max_files_per_shard": 10,
+    "max_diff_lines_per_shard": 500,
+    "reshard_on_timeout_124": true,
+    "max_reshard_depth": 2
+  },
+  "roles": [
+    {
+      "id": "architect",
+      "file": "../config/developer_roles/architect.json",
+      "instances": 2,
+      "shard_mode": "headings",
+      "depends_on": []
+    },
+    {
+      "id": "implementer",
+      "file": "../config/developer_roles/implementer.json",
+      "instances": 4,
+      "shard_mode": "headings",
+      "overlap_policy": "forbid",
+      "enforce_allowed_paths": true,
+      "apply_diff": true,
+      "depends_on": ["architect"]
+    },
+    {
+      "id": "tester",
+      "file": "../config/developer_roles/tester.json",
+      "instances": 2,
+      "shard_mode": "headings",
+      "apply_diff": true,
+      "depends_on": ["implementer"]
+    },
+    {
+      "id": "reviewer",
+      "file": "../config/developer_roles/reviewer.json",
+      "instances": 2,
+      "shard_mode": "none",
+      "depends_on": ["tester"]
+    },
+    {
+      "id": "integrator",
+      "file": "../config/developer_roles/integrator.json",
+      "instances": 1,
+      "shard_mode": "none",
+      "depends_on": ["reviewer"]
+    }
+  ]
+}
