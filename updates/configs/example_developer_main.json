@@ -1,0 +1,48 @@
+{
+  "role_defaults": {
+    "instances": 1,
+    "timeout_sec": 1800,
+    "shard_mode": "none",
+    "overlap_policy": "forbid",
+    "enforce_allowed_paths": true,
+    "max_files_per_shard": 10,
+    "max_diff_lines_per_shard": 500,
+    "reshard_on_timeout_124": true,
+    "max_reshard_depth": 2
+  },
+  "roles": {
+    "architect": {
+      "instances": 2,
+      "shard_mode": "headings",
+      "depends_on": []
+    },
+    "implementer": {
+      "instances": 3,
+      "shard_mode": "headings",
+      "depends_on": [
+        "architect"
+      ]
+    },
+    "tester": {
+      "instances": 2,
+      "shard_mode": "headings",
+      "depends_on": [
+        "implementer"
+      ]
+    },
+    "reviewer": {
+      "instances": 2,
+      "shard_mode": "headings",
+      "depends_on": [
+        "tester"
+      ]
+    },
+    "integrator": {
+      "instances": 1,
+      "shard_mode": "none",
+      "depends_on": [
+        "reviewer"
+      ]
+    }
+  }
+}

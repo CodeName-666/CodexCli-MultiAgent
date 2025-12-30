@@ -1,0 +1,39 @@
+{
+  "role_id": "implementer",
+  "shard_mode": "headings",
+  "shard_count": 3,
+  "shards": [
+    {
+      "id": "shard-1",
+      "title": "Chunk 1: Add sharding config fields",
+      "goal": "Add new RoleConfig fields and ensure JSON config loading + schema validation supports them.",
+      "allowed_paths": [
+        "multi_agent/models.py",
+        "multi_agent/config_loader.py",
+        "multi_agent/schema_validator.py"
+      ]
+    },
+    {
+      "id": "shard-2",
+      "title": "Chunk 2: Implement headings-based shard planner",
+      "goal": "Create a deterministic ShardPlanner for headings-based splitting.",
+      "allowed_paths": [
+        "multi_agent/sharding.py",
+        "multi_agent/task_split.py",
+        "multi_agent/run_logger.py"
+      ]
+    },
+    {
+      "id": "shard-3",
+      "title": "Chunk 3: Pipeline uses shards for instances",
+      "goal": "Each instance gets its own shard prompt and runs in parallel; barrier validates overlaps.",
+      "allowed_paths": [
+        "multi_agent/pipeline.py",
+        "multi_agent/sharding.py",
+        "multi_agent/diff_utils.py"
+      ]
+    }
+  ],
+  "overlap_policy": "forbid",
+  "enforce_allowed_paths": true
+}
