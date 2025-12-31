@@ -13,9 +13,12 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Tuple
 
+# Add parent directory to path so we can import multi_agent modules
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 from multi_agent.utils import get_codex_cmd, parse_cmd
 
-DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent / "config" / "developer_main.json"
+DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent.parent / "config" / "developer_main.json"
 DEFAULT_FORMAT_SECTIONS = ["- Aufgaben:", "- Entscheidungen:", "- Offene Punkte:"]
 DEFAULT_RULE_LINES = [
     "Ausgabe muss exakt diese Abschnittsmarker enthalten.",

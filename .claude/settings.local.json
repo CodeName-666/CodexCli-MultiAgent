@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls:*)",
+      "Bash(git checkout:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(python -m pytest:*)",
+      "Bash(python multi_role_agent_creator.py:*)",
+      "Bash(dir /s \"d:\\\\Projekte\\\\Python\\\\Codex_CLI_Agent\")",
+      "Bash(wc:*)",
+      "Bash(python creators/multi_family_creator.py:*)",
+      "Bash(python creators/multi_role_agent_creator.py:*)",
+      "Bash(python creators/multi_role_agent_creator_legacy.py:*)"
+    ]
+  }
+}

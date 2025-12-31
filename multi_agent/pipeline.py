@@ -11,9 +11,11 @@ from typing import Dict, List
 from .codex import AgentExecutor, CodexClient
 from .coordination import CoordinationConfig, CoordinationLog, TaskBoard
 from .diff_applier import BaseDiffApplier, UnifiedDiffApplier
-from .models import AgentResult, AgentSpec, AppConfig, RoleConfig
+from .diff_utils import detect_file_overlaps, extract_touched_files_from_unified_diff, validate_touched_files_against_allowed_paths
+from .models import AgentResult, AgentSpec, AppConfig, RoleConfig, ShardPlan
 from .progress import ProgressReporter
 from .run_logger import JsonRunLogger
+from .sharding import create_shard_plan, save_shard_plan
 from .snapshot import BaseSnapshotter, WorkspaceSnapshotter
 from .utils import (
     extract_error_reason,
@@ -159,7 +161,23 @@ class Pipeline:
                 nonlocal abort_run
                 role_start = time.monotonic()
                 json_logger.log("role_start", {"role": role_cfg.id})
-    
+
+                # Create shard plan if sharding is enabled
+                shard_plan: ShardPlan | None = None
+                if role_cfg.shard_mode != "none" and role_cfg.instances > 1:
+                    async with context_lock:
+                        current_task = context.get("task", task_display)
+                    shard_plan = create_shard_plan(role_cfg, current_task)
+                    if shard_plan:
+                        # Save shard plan for debugging
+                        shard_plan_path = run_dir / f"{role_cfg.id}_shard_plan.json"
+                        save_shard_plan(shard_plan, shard_plan_path)
+                        json_logger.log("shard_plan_created", {
+                            "role": role_cfg.id,
+                            "shard_count": shard_plan.shard_count,
+                            "shard_mode": shard_plan.shard_mode,
+                        })
+
                 if role_cfg.run_if_review_critical:
                     async with context_lock:
                         reviewer_output = context.get("reviewer_output", "")
@@ -205,6 +223,16 @@ class Pipeline:
                     local_context["role_name"] = role_cfg.name
                     local_context["role_instance_id"] = str(instance_id)
                     local_context["role_instance"] = instance_label
+
+                    # Use shard-specific task if sharding is enabled
+                    shard_index = instance_id - 1
+                    if shard_plan and shard_index < len(shard_plan.shards):
+                        shard = shard_plan.shards[shard_index]
+                        local_context["task"] = shard.content
+                        local_context["shard_id"] = shard.id
+                        local_context["shard_title"] = shard.title
+                        local_context["shard_goal"] = shard.goal
+                        local_context["allowed_paths"] = ", ".join(shard.allowed_paths)
     
                     prompt, prompt_chars, truncated, prompt_tokens, max_prompt_tokens = self._build_prompt(
                         role_cfg,
@@ -299,7 +327,25 @@ class Pipeline:
                 tasks = [asyncio.create_task(run_instance(idx)) for idx in range(1, role_cfg.instances + 1)]
                 role_results = await asyncio.gather(*tasks)
                 results[role_cfg.id] = role_results
-    
+
+                # Stage Barrier: Validate shard outputs if sharding was enabled
+                if shard_plan:
+                    validation_ok, validation_msg = await self._validate_shard_results(
+                        role_cfg,
+                        shard_plan,
+                        role_results,
+                        run_dir,
+                        json_logger,
+                    )
+                    if not validation_ok:
+                        async with report_lock:
+                            reporter.error(f"Shard validation failed for {role_cfg.id}: {validation_msg}")
+                        if role_cfg.overlap_policy == "forbid":
+                            abort_run = True
+                        elif role_cfg.overlap_policy == "warn":
+                            async with report_lock:
+                                reporter.step("Warning", f"Overlaps detected in {role_cfg.id}", advance=0)
+
                 summary_text = self._combine_outputs(
                     role_cfg,
                     role_results,
@@ -850,6 +896,107 @@ class Pipeline:
         else:
             path = run_dir / "events.jsonl"
         return JsonRunLogger(path, enabled=enabled)
+
+    @staticmethod
+    async def _validate_shard_results(
+        role_cfg: RoleConfig,
+        shard_plan: ShardPlan,
+        role_results: List[AgentResult],
+        run_dir: Path,
+        json_logger: JsonRunLogger,
+    ) -> tuple[bool, str]:
+        """
+        Validate shard results for overlaps and allowed paths violations.
+
+        Returns:
+            Tuple of (is_valid, error_message)
+        """
+        from .diff_applier import UnifiedDiffApplier
+
+        diff_applier = UnifiedDiffApplier()
+        instance_diffs: dict[str, set[str]] = {}
+
+        # Extract touched files from each instance's diff
+        for i, result in enumerate(role_results, start=1):
+            instance_label = f"{role_cfg.id}#{i}"
+            diff_text = diff_applier.extract_diff(result.stdout)
+
+            if not diff_text:
+                instance_diffs[instance_label] = set()
+                continue
+
+            touched_files = extract_touched_files_from_unified_diff(diff_text)
+            instance_diffs[instance_label] = touched_files
+
+            # Validate against allowed paths if enforced
+            shard_index = i - 1
+            if shard_plan.enforce_allowed_paths and shard_index < len(shard_plan.shards):
+                shard = shard_plan.shards[shard_index]
+                is_valid, violations = validate_touched_files_against_allowed_paths(
+                    touched_files,
+                    shard.allowed_paths,
+                )
+                if not is_valid:
+                    violation_list = ", ".join(violations)
+                    json_logger.log("shard_validation_error", {
+                        "role": role_cfg.id,
+                        "instance": instance_label,
+                        "shard_id": shard.id,
+                        "error": "allowed_paths_violation",
+                        "violations": violations,
+                    })
+                    return False, f"{instance_label} violated allowed_paths: {violation_list}"
+
+        # Detect overlaps
+        overlaps = detect_file_overlaps(instance_diffs)
+
+        if overlaps:
+            overlap_report = {
+                "role": role_cfg.id,
+                "overlap_count": len(overlaps),
+                "overlapping_files": {
+                    filepath: instances
+                    for filepath, instances in overlaps.items()
+                },
+            }
+            json_logger.log("shard_overlaps_detected", overlap_report)
+
+            # Save overlap report
+            overlap_path = run_dir / f"{role_cfg.id}_overlaps.json"
+            overlap_path.write_text(
+                json.dumps(overlap_report, indent=2, ensure_ascii=False) + "\n",
+                encoding="utf-8",
+            )
+
+            overlap_summary = "; ".join([f"{f} ({', '.join(insts)})" for f, insts in list(overlaps.items())[:3]])
+            if len(overlaps) > 3:
+                overlap_summary += f" ... (+{len(overlaps) - 3} more)"
+
+            return False, f"Overlaps detected: {overlap_summary}"
+
+        # Save successful validation summary
+        summary = {
+            "role": role_cfg.id,
+            "shard_count": shard_plan.shard_count,
+            "instances": {
+                instance_label: list(touched)
+                for instance_label, touched in instance_diffs.items()
+            },
+            "overlaps": {},
+            "validation": "passed",
+        }
+        summary_path = run_dir / f"{role_cfg.id}_shard_summary.json"
+        summary_path.write_text(
+            json.dumps(summary, indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+
+        json_logger.log("shard_validation_success", {
+            "role": role_cfg.id,
+            "shard_count": shard_plan.shard_count,
+        })
+
+        return True, ""
 
 
 def build_pipeline() -> Pipeline:

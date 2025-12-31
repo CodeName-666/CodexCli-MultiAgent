@@ -35,6 +35,17 @@ def load_role_config(
     max_prompt_chars = role_entry.get("max_prompt_chars", defaults.get("max_prompt_chars"))
     max_prompt_tokens = role_entry.get("max_prompt_tokens", defaults.get("max_prompt_tokens"))
     retries = role_entry.get("retries", defaults.get("retries", 0))
+
+    # Sharding configuration with defaults
+    shard_mode = role_entry.get("shard_mode", defaults.get("shard_mode", "none"))
+    shard_count = role_entry.get("shard_count", defaults.get("shard_count"))
+    overlap_policy = role_entry.get("overlap_policy", defaults.get("overlap_policy", "warn"))
+    enforce_allowed_paths = role_entry.get("enforce_allowed_paths", defaults.get("enforce_allowed_paths", False))
+    max_files_per_shard = role_entry.get("max_files_per_shard", defaults.get("max_files_per_shard", 10))
+    max_diff_lines_per_shard = role_entry.get("max_diff_lines_per_shard", defaults.get("max_diff_lines_per_shard", 500))
+    reshard_on_timeout_124 = role_entry.get("reshard_on_timeout_124", defaults.get("reshard_on_timeout_124", True))
+    max_reshard_depth = role_entry.get("max_reshard_depth", defaults.get("max_reshard_depth", 2))
+
     return RoleConfig(
         id=role_id,
         name=str(data.get("name") or role_id),
@@ -52,6 +63,15 @@ def load_role_config(
         model=str(role_entry.get("model")) if role_entry.get("model") else None,
         expected_sections=_coerce_str_list(role_entry.get("expected_sections")),
         run_if_review_critical=bool(role_entry.get("run_if_review_critical", False)),
+        # Sharding fields
+        shard_mode=str(shard_mode),
+        shard_count=int(shard_count) if shard_count is not None else None,
+        overlap_policy=str(overlap_policy),
+        enforce_allowed_paths=bool(enforce_allowed_paths),
+        max_files_per_shard=int(max_files_per_shard) if max_files_per_shard is not None else None,
+        max_diff_lines_per_shard=int(max_diff_lines_per_shard) if max_diff_lines_per_shard is not None else None,
+        reshard_on_timeout_124=bool(reshard_on_timeout_124),
+        max_reshard_depth=int(max_reshard_depth),
     )
 
 

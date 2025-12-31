@@ -1,0 +1,109 @@
+{
+  "system_rules": "Du bist ein hilfreicher Coding-Assistent.\n\nPrinzipien:\n- Schreibe sauberen, lesbaren Code\n- Folge Best Practices\n- Nutze Type Hints (Python) / Type Annotations (TypeScript)\n\nOutput-Format:\n- Code-Änderungen als unified diff (git diff format)\n- Markiere Diffs mit ```diff Code-Blöcken\n",
+
+  "codex": {
+    "env_var": "CODEX_CMD",
+    "default_cmd": "codex exec -"
+  },
+
+  "role_defaults": {
+    "timeout_sec": 1800,
+    "max_output_chars": 20000,
+    "max_prompt_chars": 14000,
+    "retries": 1,
+    "instances": 1,
+    "shard_mode": "none"
+  },
+
+  "roles": [
+    {
+      "id": "implementer",
+      "file": "developer_roles/implementer.json",
+      "instances": 1,
+      "depends_on": [],
+      "apply_diff": true
+    }
+  ],
+
+  "final_role_id": "implementer",
+
+  "paths": {
+    "run_dir": ".multi_agent_runs",
+    "snapshot_filename": "snapshot.txt",
+    "apply_log_filename": "apply.log"
+  },
+
+  "snapshot": {
+    "skip_dirs": [
+      ".git",
+      "__pycache__",
+      "node_modules",
+      ".venv",
+      "venv",
+      "dist",
+      "build",
+      ".idea",
+      ".pytest_cache",
+      ".mypy_cache",
+      ".multi_agent_runs"
+    ],
+    "skip_exts": [
+      ".png",
+      ".jpg",
+      ".jpeg",
+      ".gif",
+      ".pdf",
+      ".zip",
+      ".gz",
+      ".bin",
+      ".exe",
+      ".dll",
+      ".so",
+      ".dylib"
+    ],
+    "max_total_bytes": 800000,
+    "selective_context": {
+      "enabled": true,
+      "min_files": 6,
+      "max_files": 200
+    }
+  },
+
+  "agent_output": {
+    "agent_header": "## AGENT: {name} ({role})",
+    "returncode_header": "### Returncode",
+    "stdout_header": "### STDOUT",
+    "stderr_header": "### STDERR"
+  },
+
+  "messages": {
+    "error_task_empty": "Fehler: --task ist leer.",
+    "run_complete": "=== Multi-Agent Run fertig ===",
+    "workspace_label": "Workspace:  {workspace}",
+    "run_dir_label": "Run-Ordner: {run_dir}"
+  },
+
+  "diff_messages": {
+    "patch_applied": "Patch angewendet.",
+    "patch_applied_3way": "Patch angewendet (3-way).",
+    "file_updated": "{rel_path}: aktualisiert.",
+    "file_created": "{rel_path}: erstellt."
+  },
+
+  "diff_safety": {
+    "blocklist": [
+      "~/.ssh/*",
+      "config/*"
+    ],
+    "allowlist": [
+      "config/product_main.json",
+      "config/developer_main.json"
+    ]
+  },
+
+  "diff_apply": {
+    "use_git": true,
+    "use_3way": true,
+    "fallback_to_builtin": true
+  }
+}
