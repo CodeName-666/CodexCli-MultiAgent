@@ -1,492 +1,584 @@
 # Multi-Agent Codex CLI Orchestrator
 
-## Überblick
-Dieses Projekt stellt ein vollständiges Python-basiertes Multi-Agent-System dar,
-das mithilfe der **Codex CLI** mehrere spezialisierte Agenten parallel oder sequentiell
-auf eine Software-Entwicklungsaufgabe ansetzt.
+Ein Python-basiertes Framework zur Orchestrierung von spezialisierten KI-Agenten für Software-Entwicklung, Design, Dokumentation und mehr.
 
-### ✨ Neue Features: Echte Parallelität via Sharding
-**NEU in V1.0:** Statt dass alle Instanzen einer Rolle denselben Task erhalten (Ensemble-Modus),
-kann der Task nun automatisch in **Shards** (Subtasks) aufgeteilt werden. Jede Instanz bearbeitet
-parallel einen eigenen Shard → **echte parallele Ausführung** ohne Redundanz!
+---
 
-**Quick Start Sharding:**
+## 🚀 Quick Start
+
+```bash
+# Installation
+git clone <repo>
+cd <repo>
+
+# Einfacher Lauf (nur Analyse, keine Änderungen)
+python multi_agent_codex.py --task "Implementiere User-Login"
+
+# Mit automatischer Code-Anwendung
+python multi_agent_codex.py --task "Implementiere User-Login" --apply
+```
+
+**Das war's!** Die Agenten analysieren deinen Code, erstellen einen Plan und implementieren die Lösung.
+
+---
+
+## 📚 Dokumentation
+
+**Neu hier? Starte mit diesen Guides:**
+
+- **[Quick Start Guide](docs/QUICKSTART.md)** ← **Starte hier!** Eigene Konfiguration in 5 Minuten
+- **[Vollständige Konfiguration](docs/CONFIGURATION.md)** - Referenz aller Config-Optionen
+- **[Eigene Rollen erstellen](docs/CUSTOM_ROLES.md)** - Custom Agent-Rollen schreiben
+- **[Sharding (Parallelisierung)](docs/SHARDING.md)** - Echte parallele Agent-Ausführung
+
+**Beispiele:**
+- [Beispiel-Configs](examples/) - Fertige Konfigurationen zum Kopieren
+- [Minimal Template](examples/minimal_template.json) - Absolutes Minimum zum Starten
+
+---
+
+## 📖 Inhaltsverzeichnis
+
+1. [Was macht dieses Tool?](#was-macht-dieses-tool)
+2. [Grundkonzepte](#grundkonzepte)
+3. [Installation & Voraussetzungen](#installation--voraussetzungen)
+4. [Verwendung](#verwendung)
+5. [Neue Features: Sharding](#neue-features-sharding-v10)
+6. [Konfiguration](#konfiguration)
+7. [Rollen-Familien](#rollen-familien)
+8. [Command-Line Optionen](#command-line-optionen)
+9. [Troubleshooting](#troubleshooting)
+
+---
+
+## Was macht dieses Tool?
+
+Dieses System koordiniert **mehrere spezialisierte KI-Agenten**, die zusammenarbeiten, um Software-Aufgaben zu lösen:
+
+```
+Task: "Füge User-Authentifizierung hinzu"
+    ↓
+┌─────────────┐
+│  Architect  │ → Plant die Architektur
+└─────────────┘
+    ↓
+┌─────────────┐
+│ Implementer │ → Schreibt den Code (als Diff)
+└─────────────┘
+    ↓
+┌─────────────┐
+│   Tester    │ → Erstellt Tests
+└─────────────┘
+    ↓
+┌─────────────┐
+│  Reviewer   │ → Reviewed den Code
+└─────────────┘
+    ↓
+┌─────────────┐
+│ Integrator  │ → Fasst alles zusammen
+└─────────────┘
+```
+
+**Ergebnis:** Vollständige Implementierung inkl. Tests, dokumentiert und reviewed.
+
+---
+
+## Grundkonzepte
+
+### 1. **Rollen-Familien**
+Vordefinierte Agent-Teams für verschiedene Aufgaben:
+- **developer** - Software-Entwicklung (Architect → Implementer → Tester → Reviewer)
+- **designer** - UI/UX Design (UI-Architect → Designer → Implementer → Reviewer)
+- **docs** - Dokumentation (Technical Writer → Tutorial Builder → Reviewer)
+- **qa** - Testing (Test Strategist → Test Author → Bug Triager)
+- **devops** - Infrastructure (Infra Architect → Pipeline Implementer)
+- **security** - Security Audits (Threat Modeler → Security Reviewer)
+- Weitere: `product`, `data`, `research`
+
+### 2. **Tasks: Inline vs. Datei**
+
+**Inline** (kurze Aufgaben):
+```bash
+python multi_agent_codex.py --task "Füge Logging hinzu"
+```
+
+**Aus Datei** (längere Aufgaben):
+```bash
+python multi_agent_codex.py --task "@tasks/feature.md"
+```
+> `@pfad` lädt den Task aus einer Datei (du erstellst die Datei selbst)
+
+### 3. **Outputs**
+Alle Agent-Ergebnisse landen in `.multi_agent_runs/<timestamp>/`:
+```
+.multi_agent_runs/2025-12-31_10-30-45/
+├── snapshot.txt          # Workspace-Snapshot
+├── architect_1.md        # Architect Output
+├── implementer_1.md      # Implementer Output (inkl. Diff)
+├── tester_1.md           # Tester Output
+├── reviewer_1.md         # Reviewer Output
+└── integrator_1.md       # Finale Zusammenfassung
+```
+
+### 4. **Diff-Anwendung**
+```bash
+# Nur Analyse (Dry-Run, sicher)
+python multi_agent_codex.py --task "..."
+
+# Mit Code-Anwendung (Änderungen am Workspace)
+python multi_agent_codex.py --task "..." --apply
+
+# Mit Bestätigung vor jeder Änderung
+python multi_agent_codex.py --task "..." --apply --apply-confirm
+```
+
+---
+
+## Installation & Voraussetzungen
+
+### Voraussetzungen
+- **Python 3.10+**
+- **Codex CLI** im PATH (Claude CLI oder ähnlich)
+- Optional: **Git** (für besseres Diff-Handling)
+
+### Installation
+```bash
+git clone <repo>
+cd <repo>
+
+# Konfiguration prüfen (optional)
+python multi_agent_codex.py --help
+```
+
+Keine weiteren Dependencies nötig – nutzt nur Python Standard Library!
+
+---
+
+## Verwendung
+
+### Basis-Workflow
+
+#### Schritt 1: Task definieren
+```bash
+# Kurz: Direkt im Terminal
+python multi_agent_codex.py --task "Implementiere User-Login mit JWT"
+
+# Lang: Als Datei
+echo "# User Login\n## Ziel\nJWT-basierte Authentifizierung..." > tasks/login.md
+python multi_agent_codex.py --task "@tasks/login.md"
+```
+
+#### Schritt 2: Agenten arbeiten
+Das System:
+1. Erstellt Workspace-Snapshot
+2. Startet Agenten sequenziell (Architect → Implementer → ...)
+3. Jeder Agent sieht Outputs der vorherigen Agenten
+4. Speichert alle Ergebnisse in `.multi_agent_runs/`
+
+#### Schritt 3: Ergebnisse anwenden
+```bash
+# Prüfen der generierten Diffs
+cat .multi_agent_runs/<timestamp>/implementer_1.md
+
+# Diffs anwenden
+python multi_agent_codex.py --task "@tasks/login.md" --apply
+```
+
+### Verschiedene Familien nutzen
+
+```bash
+# Developer (Standard)
+python multi_agent_codex.py --task "..."
+
+# Designer für UI-Aufgaben
+python multi_agent_codex.py \
+  --config config/designer_main.json \
+  --task "Redesigne Dashboard"
+
+# Docs für Dokumentation
+python multi_agent_codex.py \
+  --config config/docs_main.json \
+  --task "Schreibe API-Dokumentation"
+```
+
+---
+
+## Neue Features: Sharding (V1.0)
+
+### 🎯 Was ist Sharding?
+
+**Vorher (Ensemble-Modus):**
+```
+Task: "Implementiere Features A, B, C"
+├─ Implementer #1 → Bekommt kompletten Task
+├─ Implementer #2 → Bekommt kompletten Task
+└─ Implementer #3 → Bekommt kompletten Task
+   → Alle arbeiten redundant
+```
+
+**Jetzt (Sharding-Modus):**
+```
+Task: "# Feature A\n...\n# Feature B\n...\n# Feature C\n..."
+├─ Implementer #1 → Bekommt nur Feature A
+├─ Implementer #2 → Bekommt nur Feature B
+└─ Implementer #3 → Bekommt nur Feature C
+   → Echte parallele Arbeit, kein Waste!
+```
+
+### Quick Start Sharding
+
+**1. Task mit Headings strukturieren:**
+```markdown
+# Feature A: User Authentication
+Implementiere JWT-basierte Authentifizierung...
+
+# Feature B: Database Schema
+Erstelle User- und Session-Models...
+
+# Feature C: API Endpoints
+Implementiere /login und /logout...
+```
+
+**2. Sharding in Config aktivieren:**
 ```json
 {
   "roles": [{
     "id": "implementer",
     "instances": 3,
-    "shard_mode": "headings"  // ← Neue Option!
+    "shard_mode": "headings"
   }]
 }
 ```
 
-📖 **[Vollständige Sharding-Dokumentation](docs/SHARDING.md)**
-
-### Enthaltene Agenten
-- **Architect** – entwirft Architektur & Plan
-- **Implementer** – implementiert Features (liefert Unified Diff)
-- **Tester** – erzeugt Tests
-- **Reviewer** – Code-Review & Fixes
-- **Integrator** – finaler Merge & Zusammenfassung
-
-## Voraussetzungen
-- Python **3.10+**
-- Codex CLI im PATH
-- Optional: Git (für robustes Patch-Handling)
-
-## Installation
-```bash
-git clone <repo>
-cd <repo>
-python multi_agent_codex.py --task "Deine Aufgabe"
-```
-
-## Quickstart
-Minimaler Lauf (ohne Patch-Apply):
-```bash
-python multi_agent_codex.py --task "Analysiere Modul X"
-```
-Ohne Patch-Apply bedeutet: Es werden keine Dateien im Workspace veraendert. Die Agenten schreiben nur Outputs/Diffs in `.multi_agent_runs/<timestamp>/`.
-
-Task aus Datei (empfohlen fuer lange Aufgaben):
-```bash
-python multi_agent_codex.py --task "@implementierer.md"
-```
-Das `@` vor dem Pfad bedeutet: Der Task wird aus einer Datei geladen. `implementierer.md` ist nur ein Beispielname; jeder Pfad ist moeglich.
-Du nutzt `@pfad` nur dann, wenn du den Task nicht inline schreiben willst, sondern aus einer Datei laden moechtest (z.B. sehr lange Beschreibung, versionierbare Aufgaben, mehrere Abschnitte).
-
-Patch-Apply ausfuehren (Aenderungen in den Workspace schreiben):
-```bash
-python multi_agent_codex.py --task "@implementierer.md" --apply
-```
-`--apply` nimmt die von den Rollen erzeugten Unified Diffs und wendet sie auf den Workspace an. Optional kannst du mit `--apply-confirm` jeden Diff bestaetigen. Mit `--apply-mode role` werden Diffs sofort nach jeder Rolle angewendet (sonst am Ende).
-
-Task-Splitting ueber Ueberschriften (mehrere Runs):
-```bash
-python multi_agent_codex.py --task "@implementierer.md" --task-split
-```
-Ob gesplittet wird, steuert `task_split.decision_mode` in der gewaehlten Hauptdatei (z.B. `config/developer_main.json`) (`auto` oder `always`).
-Standard ist `config/developer_main.json` (mit `--config` kannst du eine andere Datei waehlen, z.B. `config/designer_main.json` oder `config/product_main.json`).
-
-### Wann benutze ich `@pfad`?
-- **Ohne @**: kurze, einfache Aufgaben direkt im CLI (inline).
-  ```bash
-  python multi_agent_codex.py --task "Baue Feature X"
-  ```
-- **Mit @**: lange Aufgaben aus einer Datei laden.
-  ```bash
-  python multi_agent_codex.py --task "@tasks/feature_x.md"
-  ```
-- **Wichtig**: Die Task-Datei erstellst du selbst. Sie wird **nicht** automatisch erzeugt.
-- Agent-Outputs liegen unter `.multi_agent_runs/` (z.B. `implementer_1.md`) und sind **nicht** dasselbe wie eine Task-Datei.
-- `@pfad` ist ein normaler Dateipfad (relativ zum Arbeitsverzeichnis oder absolut). Wenn die Datei fehlt, bricht der Lauf mit Fehler ab.
-- **Kein Pflicht-Format**: Die Task-Datei kann beliebiger Text/Markdown sein. Ueberschriften helfen nur beim automatischen Splitten.
-
-Optionales Template (nur Empfehlung, kein Muss):
-```md
-# Titel
-## Ziel
-- Was soll erreicht werden?
-
-## Anforderungen
-- Punkt 1
-- Punkt 2
-
-## Akzeptanzkriterien
-- Kriterium 1
-- Kriterium 2
-
-## Hinweise
-- Relevante Dateien/Module
-- Randbedingungen
-```
-
-Beispiel ohne Template (trotzdem gueltig):
-```text
-Bitte baue ein Feature, das CSV-Importe erlaubt.
-Die Datei kommt per Upload und soll validiert werden.
-Fehler muessen klar im API-Response erscheinen.
-Tests fuer Import + Validierung sind Pflicht.
-```
-
-Beispiel fuer eine Task-Datei (`tasks/feature_x.md`):
-```bash
-mkdir -p tasks
-cat > tasks/feature_x.md <<'EOF'
-# Feature X
-- Ziel: API-Endpoint /v1/items
-- Anforderungen:
-  - GET /v1/items mit Pagination
-  - POST /v1/items mit Validierung
-  - Tests fuer beide Endpoints
-EOF
-```
-Inhalt der Datei (`tasks/feature_x.md`):
-```text
-# Feature X
-- Ziel: API-Endpoint /v1/items
-- Anforderungen:
-  - GET /v1/items mit Pagination
-  - POST /v1/items mit Validierung
-  - Tests fuer beide Endpoints
-```
-Ausfuehren mit Datei-Task:
-```bash
-python multi_agent_codex.py --task "@tasks/feature_x.md"
-```
-Design-Rollen verwenden (UI-Rollen):
-```bash
-python multi_agent_codex.py --config config/designer_main.json --task "@tasks/feature_x.md"
-```
-Erwartete Artefakte (pro Run):
-- `config/<family>_main.json` (z.B. `config/developer_main.json`, `config/designer_main.json`) steuert, welche Rollen laufen.
-- `config/<family>_roles/*.json` enthalten die Rollen-Prompts.
-- `.multi_agent_runs/<timestamp>/` mit `*.md` Outputs und `snapshot.txt`.
-
-## Nutzung
+**3. Ausführen:**
 ```bash
 python multi_agent_codex.py \
-  --task "Baue ein CRUD mit FastAPI" \
-  --dir . \
-  --apply
+  --config examples/sharding_basic_config.json \
+  --task "@examples/task_three_features.md"
 ```
 
-## Sharding Configuration (NEW)
+**Ergebnis:** 3 Implementer arbeiten parallel an 3 Features!
 
-### Config-Felder für Sharding
-Erweitere deine `role_defaults` oder einzelne Roles in `config/<family>_main.json`:
+### Sharding Config-Optionen
 
+| Option | Typ | Default | Beschreibung |
+|--------|-----|---------|--------------|
+| `shard_mode` | string | `"none"` | `none` = Ensemble, `headings` = H1-basiert, `files` = Pfad-basiert |
+| `instances` | int | 1 | Anzahl paralleler Instanzen |
+| `overlap_policy` | string | `"warn"` | `forbid` = Abort bei Overlap, `warn` = Continue, `allow` = Keine Prüfung |
+| `enforce_allowed_paths` | bool | false | Erzwingt, dass Instanzen nur definierte Dateien ändern |
+
+### Wann Sharding nutzen?
+
+✅ **Sharding sinnvoll:**
+- Mehrere unabhängige Features
+- Klar abgegrenzte Aufgaben
+- Zeitkritische Projekte (→ Speedup)
+
+❌ **Ensemble besser:**
+- Kleine, einzelne Tasks
+- Kreative/explorative Aufgaben (mehrere Ansätze gewünscht)
+- Code-Review (mehrere Meinungen gewünscht)
+
+📖 **[Vollständige Sharding-Dokumentation](docs/SHARDING.md)**
+📁 **[Beispiele mit Sharding](examples/)**
+
+---
+
+## Konfiguration
+
+> **💡 Tipp:** Für eine detaillierte Anleitung zum Erstellen eigener Configs, siehe [Quick Start Guide](docs/QUICKSTART.md)
+
+### Struktur
+
+```
+config/
+├── developer_main.json          # Developer-Pipeline
+├── designer_main.json           # UI/UX-Pipeline
+├── docs_main.json               # Dokumentations-Pipeline
+├── developer_roles/
+│   ├── architect.json
+│   ├── implementer.json
+│   ├── tester.json
+│   └── ...
+└── designer_roles/
+    ├── ui_designer.json
+    └── ...
+```
+
+### Hauptkonfiguration (`<family>_main.json`)
+
+**Minimal-Beispiel:**
+```json
+{
+  "system_rules": "Du bist ein hilfreicher Coding-Assistent...",
+  "roles": [
+    {
+      "id": "implementer",
+      "file": "developer_roles/implementer.json",
+      "instances": 1,
+      "apply_diff": true
+    }
+  ],
+  "final_role_id": "implementer"
+}
+```
+
+**Mit Sharding:**
 ```json
 {
   "role_defaults": {
-    "shard_mode": "headings",
-    "overlap_policy": "warn",
-    "enforce_allowed_paths": false
+    "shard_mode": "none",
+    "overlap_policy": "warn"
   },
   "roles": [
     {
       "id": "implementer",
+      "file": "developer_roles/implementer.json",
       "instances": 3,
-      "shard_mode": "headings"  // Überschreibt role_defaults
+      "shard_mode": "headings",
+      "apply_diff": true
     }
   ]
 }
 ```
 
-| Feld | Typ | Default | Beschreibung |
-|------|-----|---------|---------------|
-| `shard_mode` | string | `"none"` | `none` (Ensemble), `headings` (H1-basiert), `files` (Pfad-basiert) |
-| `shard_count` | int? | `instances` | Anzahl Shards (überschreibt Auto-Detection) |
-| `overlap_policy` | string | `"warn"` | `forbid` (abort bei Overlap), `warn` (continue), `allow` (keine Prüfung) |
-| `enforce_allowed_paths` | bool | `false` | Erzwingt, dass Instanzen nur erlaubte Pfade ändern |
+### Rollen-Datei (`roles/<role>.json`)
 
-**Task-Struktur für Heading-Mode:**
-```markdown
-# Feature A: Authentication
-Implement JWT-based authentication...
-
-# Feature B: Database Schema
-Create user and session models...
-
-# Feature C: API Endpoints
-Implement /login and /logout endpoints...
-```
-
-→ 3 Shards für 3 Instanzen, jede bekommt ein Feature
-
-**Output-Artefakte:**
-- `<role>_shard_plan.json` - Shard-Plan (Debug)
-- `<role>_shard_summary.json` - Validation-Report
-- `<role>_overlaps.json` - Falls Overlaps erkannt
-
-📖 **Details:** [docs/SHARDING.md](docs/SHARDING.md)
-
----
-
-## Wichtige Flags
-### multi_agent_codex.py
-| Flag | Beschreibung |
-|-----|--------------|
-| --config | Pfad zur Konfigurationsdatei (z.B. `config/developer_main.json` oder `config/product_main.json`) |
-| --task | Zentrale Aufgabe (Pflicht). Optional: `@pfad` fuer Task-Datei |
-| --dir | Arbeitsverzeichnis/Repo-Root (default: current dir) |
-| --timeout | Timeout pro Agent in Sekunden |
-| --apply | Versucht Diffs aus Agent-Outputs auf Workspace anzuwenden |
-| --apply-mode | Wann Diffs angewendet werden: end (nach allen Rollen) oder role (nach jeder Rolle) |
-| --apply-roles | Welche Rollen angewendet werden (repeatable oder kommasepariert) |
-| --fail-fast | Bei Patch-Fehler sofort abbrechen (nur mit --apply) |
-| --ignore-fail | Exitcode immer 0, auch wenn Agenten fehlschlagen |
-| --task-split | Splittet die Aufgabe nach Ueberschriften und startet mehrere Runs |
-| --no-task-resume | Deaktiviert Resume fuer Task-Splitting (neu aufsetzen) |
-| --max-files | Max Dateien im Snapshot |
-| --max-file-bytes | Max Bytes pro Datei im Snapshot |
-
-### multi_role_agent_creator.py
-| Flag | Beschreibung |
-|-----|--------------|
-| --description | Beschreibung fuer die Rolle (Pflicht) |
-| --id | Rollen-ID (default: aus Beschreibung generiert) |
-| --name | Anzeigename (default: id) |
-| --role | Rollenlabel (default: name) |
-| --title | Titel im Prompt (default: role) |
-| --context | Zus. Platzhalter (key oder key:Label) |
-| --apply-diff | Markiert Rolle als Diff-Lieferant |
-| --insert-after | Fuegt Rolle nach einer Rolle ein |
-| --config | Pfad zu `config/<family>_main.json` (z.B. `config/designer_main.json`) |
-| --force | Ueberschreibt vorhandene Rolle/Datei |
-
-## Struktur
-```text
-.multi_agent_runs/
-  └── TIMESTAMP/
-      ├── task_board.json
-      ├── coordination.log
-      ├── architect_1.md
-      ├── implementer_1.md
-      ├── implementer_2.md
-      ├── tester_1.md
-      ├── reviewer_1.md
-      └── integrator_1.md
-```
-
-## JSON Konfiguration
-`config/<family>_main.json` ist die zentrale Steuerdatei. Hier definierst du Rollen, Reihenfolge, Limits und das Verhalten beim Patch-Apply.
-Verfuegbare Familien (Auswahl):
-- `config/developer_main.json`, `config/designer_main.json`
-- `config/product_main.json`, `config/qa_main.json`, `config/devops_main.json`
-- `config/security_main.json`, `config/data_main.json`, `config/docs_main.json`, `config/research_main.json`
-
-### Rollen-Familien (Einsatz & Rollen)
-#### developer (Softwareentwicklung)
-Zweck: klassische Implementierungspipeline fuer Code-Aenderungen.
-Rollen:
-- `architect`: entwirft Architektur, Plan und Risiken.
-- `implementer`: setzt um und liefert Diff.
-- `tester`: definiert Tests und liefert Diff.
-- `reviewer`: reviewt Aenderungen und liefert optional Diff.
-- `implementer_revision`: behebt kritische Findings und liefert Diff.
-- `integrator`: fasst zusammen und definiert naechste Schritte.
-
-#### designer (UI/UX Design + Umsetzung)
-Zweck: UI-Konzept bis zu implementierten UI-Aenderungen.
-Rollen:
-- `ui_architect`: Informationsarchitektur, Flows, Komponenten.
-- `ui_designer`: Design-Konzept und Layout-Entscheidungen.
-- `ui_implementer`: UI-Implementierung + Diff.
-- `ui_tester`: UI-Checks (A11y/Responsive/States) + Diff.
-- `ui_reviewer`: Review + optional Diff.
-- `ui_implementer_revision`: kritische Fixes + Diff.
-- `ui_integrator`: finale Zusammenfassung.
-
-#### product (Product/Requirements)
-Zweck: klare Anforderungen und Akzeptanzkriterien.
-Rollen:
-- `product_architect`: Ziele, Scope, Metriken, Risiken.
-- `requirements_writer`: User Stories, Akzeptanzkriterien.
-- `acceptance_reviewer`: Review der Anforderungen.
-- `product_integrator`: finale Zusammenfassung.
-
-#### qa (Quality Assurance)
-Zweck: Teststrategie, Testfaelle und Triage.
-Rollen:
-- `test_strategist`: Teststrategie und Abdeckung.
-- `test_author`: Testfaelle + Diff.
-- `test_executor`: Ausfuehrung/Erwartungen (ohne Diff).
-- `bug_triager`: Findings und Priorisierung.
-- `qa_integrator`: finale Zusammenfassung.
-
-#### devops (Platform/Release)
-Zweck: Infrastruktur, Pipeline, Releases.
-Rollen:
-- `infra_architect`: Infrastruktur- und Observability-Design.
-- `pipeline_implementer`: Pipeline-Implementierung + Diff.
-- `release_manager`: Rollout, Checks, Rollback.
-- `reliability_reviewer`: Reliability-Review.
-- `devops_integrator`: finale Zusammenfassung.
-
-#### security (Security/Compliance)
-Zweck: Threat-Modeling, Review und Fixes.
-Rollen:
-- `threat_modeler`: Bedrohungen und Mitigations.
-- `security_reviewer`: Security-Review.
-- `compliance_checker`: Policies/Abweichungen.
-- `security_fixer`: Sicherheits-Fixes + Diff.
-- `security_integrator`: finale Zusammenfassung.
-
-#### data (Data/ML)
-Zweck: Data/ML-Design, Pipeline, Evaluation.
-Rollen:
-- `model_designer`: Modellziel, Features, Risiken.
-- `data_engineer`: Datenpipeline + Diff.
-- `evaluator`: Metriken und Evaluation.
-- `ml_reviewer`: Review der ML-Ergebnisse.
-- `data_integrator`: finale Zusammenfassung.
-
-#### docs (Documentation)
-Zweck: Dokumentation und Tutorials.
-Rollen:
-- `tech_writer`: Doku-Struktur + Diff.
-- `tutorial_builder`: Tutorials + Diff.
-- `docs_reviewer`: Review der Doku.
-- `docs_integrator`: finale Zusammenfassung.
-
-#### research (Research/UX)
-Zweck: Research, UX-Analyse und A11y-Checks.
-Rollen:
-- `user_researcher`: Research-Methoden und Findings.
-- `ux_analyst`: Analyse, Hypothesen, Prioritaeten.
-- `a11y_reviewer`: A11y-Review.
-- `research_integrator`: finale Zusammenfassung.
-
-### Uebersicht (Struktur)
-```mermaid
-flowchart LR
-    A[config/<family>_main.json] --> B[roles: config/<family>_roles/*.json]
-    A --> C[task_split / task_limits]
-    A --> D[snapshot / outputs / paths]
-    A --> E[diff_apply / diff_safety]
-    A --> F[codex / system_rules / messages]
-    D --> G[.multi_agent_runs/<run_id>/]
-    B --> G
-```
-
-### Wichtige Bereiche (kurz)
-- **roles**: Reihenfolge und Auswahl der Rollen, inkl. `instances`, `depends_on`, `apply_diff`.
-- **task_split**: Task-Splitting ueber Ueberschriften und Hybrid-Planung.
-  - `decision_mode`: `auto` (split nur wenn noetig) oder `always` (immer splitten).
-  - `llm_enabled`/`llm_cmd`: LLM-Planer aktivieren und optionalen Codex-Command setzen.
-- **task_limits**: Laengen-Limits fuer Tasks (Inline/Short/Dateiname).
-- **snapshot**: Umfang des Workspace-Snapshots (Skip-Listen, Groessen, Delta).
-- **outputs/paths**: Output-Pattern und Run-Verzeichnisse.
-- **diff_apply/diff_safety**: Patch-Apply und Blocklisten/Allowlists.
-- **codex/system_rules/messages**: CLI-Command, Systemregeln und Meldungen.
-
-### Rollen: `config/<family>_roles/*.json`
-Jede Rolle ist eine eigene JSON-Datei mit:
-- `id`: Rollen-ID (muss zur gewaehlten Hauptdatei passen).
-- `name`: Name des Agents (default: id).
-- `role`: Rollenbezeichnung fuer die Ausgabe.
-- `prompt_template`: Prompt-Template mit Platzhaltern wie `{task}`, `{snapshot}`,
-  `{architect_summary}`, `{implementer_summary}`, `{tester_summary}` oder
-  `{<rolle>_output}`.
-In der jeweiligen Hauptdatei pro Rolle zusaetzlich:
-- `instances`: Anzahl paralleler Instanzen (default: 1).
-
-Beispiel: UI-Rollen (Auszug aus `config/designer_main.json`)
-```json
-"roles": [
-  { "id": "ui_architect", "file": "designer_roles/ui_architect.json", "instances": 1 },
-  { "id": "ui_designer", "file": "designer_roles/ui_designer.json", "instances": 1, "depends_on": ["ui_architect"] },
-  { "id": "ui_implementer", "file": "designer_roles/ui_implementer.json", "apply_diff": true, "depends_on": ["ui_designer"] },
-  { "id": "ui_tester", "file": "designer_roles/ui_tester.json", "apply_diff": true, "depends_on": ["ui_implementer"] },
-  { "id": "ui_reviewer", "file": "designer_roles/ui_reviewer.json", "apply_diff": true, "depends_on": ["ui_tester"] },
-  { "id": "ui_implementer_revision", "file": "designer_roles/ui_implementer_revision.json", "apply_diff": true, "depends_on": ["ui_reviewer"], "run_if_review_critical": true },
-  { "id": "ui_integrator", "file": "designer_roles/ui_integrator.json", "depends_on": ["ui_architect","ui_designer","ui_implementer","ui_tester","ui_reviewer","ui_implementer_revision"] }
-],
-"final_role_id": "ui_integrator"
-```
-
-### Standard-Platzhalter
-In jedem `prompt_template` verfuegbar:
-- `{task}`: Globale Aufgabe.
-- `{snapshot}`: Workspace-Snapshot.
-- `{task_board_path}`: Pfad zum Task-Board (JSON).
-- `{coordination_log_path}`: Pfad zum Koordinations-Log (JSONL).
-- `{role_instance_id}` / `{role_instance}`: Instanz-Infos fuer parallele Rollen.
-- `{<rolle>_summary}`: Kurz-Zusammenfassung der Rolle (z.B. `{architect_summary}`).
-- `{<rolle>_output}`: Voller Output der Rolle (z.B. `{reviewer_output}`).
-
-## Rollen-Ablauf
-- Rollen laufen sequentiell in der Reihenfolge der gewaehlten Hauptdatei.
-- `apply_diff: true` markiert Rollen, deren Diffs bei `--apply` angewendet werden.
-- `--apply-mode role` wendet Diffs direkt nach der Rolle an und erzeugt einen frischen Snapshot.
-- Die finale Kurz-Ausgabe stammt von `final_role_id`.
-
-### Rollen-Abhaengigkeiten (Mermaid)
-```mermaid
-flowchart TD
-    A[architect] --> B[implementer]
-    B --> C[tester]
-    C --> D[reviewer]
-    D --> E[implementer_revision]
-    A --> F[integrator]
-    B --> F
-    C --> F
-    D --> F
-    E --> F
-```
-
-## Parallelisierung pro Rolle
-- `roles[].instances` startet mehrere Instanzen derselben Rolle parallel.
-- Task-Board und Log liegen im Run-Ordner (`task_board.json`, `coordination.log`).
-- Output-Dateien nutzen das Pattern aus `outputs.pattern` (z.B. `<role>_<instance>.md`).
-
-## Sicherheit
-- Standardmäßig **Dry-Run**
-- Patches nur via `--apply`
-- Kein Löschen bestehender Dateien ohne Diff
-
-## Fehlerfaelle (Beispiele)
-- `Fehler: Codex CLI nicht gefunden`: `codex` ist nicht im PATH oder `CODEX_CMD` fehlt.
-- `Kein 'diff --git' Header`: Agent-Output enthaelt keinen git-style Unified Diff.
-- `Fehler: Prompt fuer Rolle ...`: Platzhalter im `prompt_template` fehlt im Kontext.
-
-## Performance-Tuning
-- `--timeout`: Laengere Laufzeit pro Agent erlauben.
-- `--max-files` / `--max-file-bytes`: Snapshot-Groesse begrenzen.
-
-## Neuere Updates
-- `--apply-mode` und `--apply-roles` geben Kontrolle ueber Zeitpunkt und Auswahl der Patch-Anwendung.
-- Status-Ausgabe enthaelt jetzt einen lesbaren Text (`OK`, `KEIN_BEITRAG`, `FEHLER`).
-- Snapshots ignorieren `.multi_agent_runs`, um Kontextgroesse zu reduzieren.
-- Lange Tasks werden automatisch gekuerzt; Volltext liegt pro Run in `.multi_agent_runs/<timestamp>/task_full.md` und wird im Prompt referenziert.
-- Task-Splitting (optional) legt Chunks unter `.multi_agent_runs/<split_id>/tasks/` an und speichert den Zwischenstand in `task_split.json` (Resume standardmaessig aktiv, via `--no-task-resume` aus).
-- Hybrid-Modus: Heuristik entscheidet, ob gesplittet wird; bei Bedarf plant ein LLM die Chunk-Gruppen nach Modulen/Features (Fallback: heuristisches Splitting).
-
-## Beispielrolle
-Beispiel fuer eine neue Rolle in `config/developer_roles/qa_guard.json`:
 ```json
 {
-  "id": "qa_guard",
-  "name": "qa_guard",
-  "role": "QA Guard",
-  "prompt_template": "FORMAT:\n# QA Guard\n- Findings:\n- Risiken:\n- Vorschlaege:\n\nAUFGABE:\n{task}\n\nIMPLEMENTIERUNG (Kurz):\n{implementer_summary}\n\nKONTEXT (Workspace Snapshot):\n{snapshot}\n"
+  "id": "implementer",
+  "name": "Implementer",
+  "role": "Code Implementer",
+  "prompt_template": "AUFGABE:\n{task}\n\nARCHITEKTUR:\n{architect_summary}\n\nSNAPSHOT:\n{snapshot}\n"
 }
 ```
 
-## Erweiterung
-- Weitere Agenten in der Hauptdatei registrieren und eigenes JSON in `config/developer_roles/` oder `config/designer_roles/` anlegen
-- Planner/Worker-Pattern möglich
-- CI-Integration empfohlen
+**Verfügbare Platzhalter:**
+- `{task}` - Die Aufgabenstellung
+- `{snapshot}` - Workspace-Snapshot
+- `{architect_summary}` - Kurz-Output des Architects
+- `{implementer_output}` - Voller Output des Implementers
+- `{role_instance_id}` - Instanz-Nummer (bei Parallelisierung)
+- `{shard_title}` - Shard-Titel (bei Sharding)
+- `{allowed_paths}` - Erlaubte Pfade (bei Sharding)
 
-## Multi Role Agent Creator
-Mit `multi_role_agent_creator.py` kannst du aus einer Beschreibung eine neue Rolle erzeugen
-und automatisch in der gewaehlten Hauptdatei registrieren lassen.
+📖 **Mehr Details:** [Vollständige Konfigurationsreferenz](docs/CONFIGURATION.md) | [Eigene Rollen erstellen](docs/CUSTOM_ROLES.md)
 
-### Beispiel
+---
+
+## Rollen-Familien
+
+### Developer (Software-Entwicklung)
+
+**Rollen:**
+- `architect` - Architektur & Design
+- `implementer` - Code-Implementierung
+- `tester` - Test-Erstellung
+- `reviewer` - Code-Review
+- `integrator` - Finale Zusammenfassung
+
+**Verwendung:**
 ```bash
-python3 multi_role_agent_creator.py \
-  --description "Analysiert Risiken und liefert konkrete Verbesserungen." \
-  --id risk_analyst \
-  --role "Risk Analyst" \
-  --context architect_summary:ARCH\ (Kurz) \
-  --insert-after reviewer
+python multi_agent_codex.py --task "Implementiere Feature X"
 ```
 
-### Wichtige Optionen
+---
+
+### Designer (UI/UX)
+
+**Rollen:**
+- `ui_architect` - Informationsarchitektur
+- `ui_designer` - Design-Konzept
+- `ui_implementer` - UI-Code
+- `ux_reviewer` - UX-Review
+
+**Verwendung:**
+```bash
+python multi_agent_codex.py \
+  --config config/designer_main.json \
+  --task "Erstelle Login-Formular"
+```
+
+---
+
+### Docs (Dokumentation)
+
+**Rollen:**
+- `technical_writer` - Technische Dokumentation
+- `tutorial_builder` - Tutorials
+- `docs_reviewer` - Review
+
+**Verwendung:**
+```bash
+python multi_agent_codex.py \
+  --config config/docs_main.json \
+  --task "Dokumentiere die API"
+```
+
+---
+
+### QA (Testing)
+
+**Rollen:**
+- `test_strategist` - Teststrategie
+- `test_author` - Testfall-Erstellung
+- `bug_triager` - Bug-Priorisierung
+
+**Verwendung:**
+```bash
+python multi_agent_codex.py \
+  --config config/qa_main.json \
+  --task "Erstelle Testplan für Feature X"
+```
+
+---
+
+### Weitere Familien
+
+- **DevOps** - Infrastructure & CI/CD
+- **Security** - Security Audits & Threat Modeling
+- **Data** - Data Pipelines & ML
+- **Product** - Requirements & User Stories
+- **Research** - User Research & Analyse
+
+[Vollständige Übersicht aller Familien](docs/FAMILIES.md)
+
+---
+
+## Command-Line Optionen
+
+### Haupt-Optionen
+
+```bash
+python multi_agent_codex.py [OPTIONEN]
+```
+
+| Option | Beschreibung | Beispiel |
+|--------|--------------|----------|
+| `--task` | Aufgabe (inline oder `@datei`) | `--task "Füge Login hinzu"` |
+| `--config` | Config-Datei | `--config config/designer_main.json` |
+| `--dir` | Arbeitsverzeichnis | `--dir /path/to/project` |
+| `--apply` | Diffs anwenden | `--apply` |
+| `--apply-confirm` | Vor jedem Diff fragen | `--apply-confirm` |
+| `--timeout` | Timeout pro Agent (Sekunden) | `--timeout 3600` |
+
+### Erweiterte Optionen
+
 | Option | Beschreibung |
 |--------|--------------|
-| --description | Beschreibung fuer die Rolle (Pflicht) |
-| --id | Rollen-ID (default: aus Beschreibung generiert) |
-| --name | Anzeigename (default: id) |
-| --role | Rollenlabel (default: name) |
-| --title | Titel im Prompt (default: role) |
-| --context | Zus. Platzhalter (key oder key:Label) |
-| --apply-diff | Markiert Rolle als Diff-Lieferant |
-| --insert-after | Fuegt Rolle nach einer Rolle ein |
-| --config | Pfad zu `config/<family>_main.json` (z.B. `config/developer_main.json`) |
-| --force | Ueberschreibt vorhandene Rolle/Datei |
+| `--apply-mode` | Wann Diffs anwenden: `end` (nach allen) oder `role` (nach jeder Rolle) |
+| `--apply-roles` | Nur bestimmte Rollen anwenden (kommasepariert) |
+| `--fail-fast` | Bei Fehler sofort abbrechen |
+| `--ignore-fail` | Exitcode immer 0 |
+| `--task-split` | Task in mehrere Runs aufteilen |
+| `--max-files` | Max. Dateien im Snapshot |
+| `--max-file-bytes` | Max. Größe pro Datei im Snapshot |
+
+### Beispiele
+
+```bash
+# Standard-Lauf
+python multi_agent_codex.py --task "Implementiere Feature X"
+
+# Mit Diff-Anwendung
+python multi_agent_codex.py --task "..." --apply
+
+# Mit Bestätigung
+python multi_agent_codex.py --task "..." --apply --apply-confirm
+
+# Designer-Familie mit Sharding
+python multi_agent_codex.py \
+  --config examples/designer_sharding_config.json \
+  --task "@examples/designer_task_ui_components.md"
+
+# Nur bestimmte Rollen anwenden
+python multi_agent_codex.py \
+  --task "..." \
+  --apply \
+  --apply-roles implementer,tester
+```
+
+---
+
+## Troubleshooting
+
+### Problem: "Codex CLI nicht gefunden"
+
+**Ursache:** `codex` ist nicht im PATH
+
+**Lösung:**
+```bash
+# Option 1: Codex CLI zum PATH hinzufügen
+export PATH="$PATH:/pfad/zu/codex"
+
+# Option 2: In Config setzen
+{
+  "codex": {
+    "env_var": "CODEX_CMD",
+    "default_cmd": "/pfad/zu/codex"
+  }
+}
+```
+
+---
+
+### Problem: "Kein Diff gefunden"
+
+**Ursache:** Agent hat keinen validen Diff generiert
+
+**Lösung:**
+1. Prüfe Agent-Output: `cat .multi_agent_runs/<timestamp>/implementer_1.md`
+2. Suche nach `diff --git` Headers
+3. Passe Prompt-Template an, falls nötig
+
+---
+
+### Problem: "Overlaps detected" (bei Sharding)
+
+**Ursache:** Mehrere Instanzen haben dieselbe Datei geändert
+
+**Lösung:**
+```bash
+# Option 1: Overlap-Report prüfen
+cat .multi_agent_runs/<timestamp>/<role>_overlaps.json
+
+# Option 2: Policy ändern
+{
+  "overlap_policy": "allow"  # Statt "forbid" oder "warn"
+}
+
+# Option 3: Task besser strukturieren
+# Klarere Abgrenzung der Features in den Headings
+```
+
+---
+
+### Problem: Agent-Output zu lang / Timeout
+
+**Lösung:**
+```bash
+# Timeout erhöhen
+python multi_agent_codex.py --task "..." --timeout 3600
+
+# Oder: Snapshot kleiner machen
+python multi_agent_codex.py \
+  --task "..." \
+  --max-files 100 \
+  --max-file-bytes 50000
+```
+
+---
+
+## Weitere Ressourcen
+
+- 📖 **[Sharding-Dokumentation](docs/SHARDING.md)** - Vollständiger Guide zu echter Parallelität
+- 📁 **[Beispiele](examples/)** - Fertige Configs und Tasks zum Testen
+- 🔧 **[Erweiterte Konfiguration](docs/CONFIGURATION.md)** - Alle Config-Optionen im Detail
+- 🤝 **[Eigene Rollen erstellen](docs/CUSTOM_ROLES.md)** - Wie du eigene Agenten erstellst
+
+---
 
 ## Lizenz
-MIT – freie Nutzung auf eigene Verantwortung
+
+MIT – Freie Nutzung auf eigene Verantwortung
