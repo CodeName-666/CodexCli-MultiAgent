@@ -20,10 +20,18 @@ Der **Role Creator** (`multi_role_agent_creator.py`) wurde erweitert um einen **
 ### Einfachste Verwendung
 
 ```bash
+# Via Haupt-CLI (empfohlen)
+python multi_agent_codex.py create-role \
+  --nl-description "Ein Code Reviewer der auf Bugs, Security-Issues und Best Practices prüft" \
+  --config config/developer_main.json
+
+# ODER direkt/eigenständig
 python creators/multi_role_agent_creator.py \
   --nl-description "Ein Code Reviewer der auf Bugs, Security-Issues und Best Practices prüft" \
   --config config/developer_main.json
 ```
+
+> **Hinweis:** Beide Aufrufe sind funktional identisch. Das Haupt-CLI bietet eine einheitlichere Schnittstelle.
 
 **Output:**
 ```
@@ -40,6 +48,15 @@ Rolle erstellt: code_reviewer
 ### Mit mehr Optionen
 
 ```bash
+# Via Haupt-CLI
+python multi_agent_codex.py create-role \
+  --nl-description "Ein Security Auditor der OWASP Top 10 Vulnerabilities findet und Fixes vorschlägt" \
+  --config config/security_main.json \
+  --apply-diff \
+  --depends-on threat_modeler \
+  --lang en
+
+# ODER direkt
 python creators/multi_role_agent_creator.py \
   --nl-description "Ein Security Auditor der OWASP Top 10 Vulnerabilities findet und Fixes vorschlägt" \
   --config config/security_main.json \
@@ -51,6 +68,13 @@ python creators/multi_role_agent_creator.py \
 ### Dry-Run (Preview)
 
 ```bash
+# Via Haupt-CLI
+python multi_agent_codex.py create-role \
+  --nl-description "Ein Performance Optimizer der Bottlenecks identifiziert" \
+  --config config/developer_main.json \
+  --dry-run
+
+# ODER direkt
 python creators/multi_role_agent_creator.py \
   --nl-description "Ein Performance Optimizer der Bottlenecks identifiziert" \
   --config config/developer_main.json \

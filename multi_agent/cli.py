@@ -27,8 +27,16 @@ from .task_split import (
 )
 from .utils import get_codex_cmd, now_stamp, parse_cmd, summarize_text
 
+# Import creator modules for subcommands
+try:
+    from creators import multi_family_creator, multi_role_agent_creator
+    CREATORS_AVAILABLE = True
+except ImportError:
+    CREATORS_AVAILABLE = False
 
-def parse_args(cfg, argv: Optional[List[str]] = None) -> argparse.Namespace:
+
+def parse_args_task(cfg, argv: Optional[List[str]] = None) -> argparse.Namespace:
+    """Parse arguments for the task subcommand (original functionality)."""
     cli = cfg.cli
     args_cfg = cli["args"]
     p = argparse.ArgumentParser(description=str(cli["description"]))
@@ -178,7 +186,8 @@ async def _run_split(pipeline, args: argparse.Namespace, cfg) -> int:
     return 1 if any_fail else 0
 
 
-def main() -> None:
+def main_task() -> None:
+    """Original main function - now a subcommand handler."""
     config_path = _parse_config_path(None)
     try:
         cfg = load_app_config(config_path)
@@ -189,7 +198,7 @@ def main() -> None:
         print(f"Fehler: Ungueltige Konfiguration: {e}", file=sys.stderr)
         sys.exit(2)
 
-    args = parse_args(cfg)
+    args = parse_args_task(cfg)
     if args.validate_config:
         from .schema_validator import validate_config
 
@@ -214,3 +223,62 @@ def main() -> None:
         print(cfg.messages["codex_tip"], file=sys.stderr)
         rc = 127
     sys.exit(rc)
+
+
+def main() -> None:
+    """Main entry point with subcommand support."""
+    # Check if we have a subcommand
+    if len(sys.argv) > 1 and sys.argv[1] in ['create-family', 'create-role']:
+        if not CREATORS_AVAILABLE:
+            print("Fehler: Creator-Module nicht verfügbar.", file=sys.stderr)
+            print("Stelle sicher, dass das 'creators' Verzeichnis im Python-Path ist.", file=sys.stderr)
+            sys.exit(2)
+
+        subcommand = sys.argv[1]
+        # Remove subcommand from argv for the creator's argparse
+        creator_argv = sys.argv[2:]
+
+        if subcommand == 'create-family':
+            # Call multi_family_creator.main() with remaining args
+            sys.exit(multi_family_creator.main(creator_argv))
+        elif subcommand == 'create-role':
+            # Call multi_role_agent_creator with modified sys.argv
+            # The creator's main() uses sys.argv internally
+            sys.argv = [sys.argv[0]] + creator_argv
+            try:
+                multi_role_agent_creator.main()
+            except SystemExit as e:
+                sys.exit(e.code if e.code else 0)
+
+    # If no recognized subcommand, check for --help to show available commands
+    elif len(sys.argv) > 1 and sys.argv[1] in ['-h', '--help']:
+        print("Multi-Agent Codex CLI")
+        print("=" * 50)
+        print("\nDieses CLI bietet mehrere Funktionen zum Arbeiten mit Multi-Agent-Systemen.\n")
+        print("Verwendung:")
+        print("  multi_agent_codex --task <description> [options]          # Rückwärtskompatibel")
+        print("  multi_agent_codex create-family --description <text> [...]")
+        print("  multi_agent_codex create-role --nl-description <text> [...]\n")
+        print("Unterkommandos:")
+        print("  create-family   Erstelle eine neue Agent-Familie von einer")
+        print("                  natürlichsprachlichen Beschreibung")
+        print("  create-role     Erstelle eine neue Agent-Rolle in einer bestehenden Familie\n")
+        print("Standard-Verhalten (ohne Unterkommando):")
+        print("  Führt einen Multi-Agent-Task aus (benötigt --task Argument)\n")
+        print("Hilfe zu Unterkommandos:")
+        print("  multi_agent_codex create-family --help")
+        print("  multi_agent_codex create-role --help\n")
+        print("Beispiele:")
+        print("  # Familie erstellen")
+        print("  multi_agent_codex create-family --description \"Ein Team für ML-Entwicklung\"")
+        print("")
+        print("  # Rolle erstellen")
+        print("  multi_agent_codex create-role --nl-description \"Ein Code Reviewer\"")
+        print("")
+        print("  # Task ausführen (rückwärtskompatibel)")
+        print("  multi_agent_codex --task \"Implementiere Feature X\" --apply")
+        sys.exit(0)
+
+    # Default: run task command (backwards compatibility)
+    else:
+        main_task()

@@ -27,6 +27,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 # Import utilities from existing multi_role_agent_creator
 from creators.multi_role_agent_creator import (
     load_json,
+    load_config_with_defaults,
+    deep_merge,
     write_json,
     slugify,
     build_description_optimization_prompt,
@@ -777,46 +779,68 @@ class FamilyCreator:
 
     def _build_main_config(self, spec: Dict, role_entries: List[Dict]) -> Dict:
         """
-        Build main configuration based on default developer template.
-        """
-        # Load developer_main.json as base for defaults
-        default_config_path = self.config_path / "developer_main.json"
-        if default_config_path.exists():
-            base_config = load_json(default_config_path)
-        else:
-            base_config = {}
+        Build family-specific main configuration.
 
-        # Override with family-specific values
-        main_config = {
-            "system_rules": spec.get("system_rules", base_config.get("system_rules", "")),
-            "final_role_id": spec["final_role_id"],
-            "summary_max_chars": base_config.get("summary_max_chars", 1400),
-            "final_summary_max_chars": base_config.get("final_summary_max_chars", 2400),
-            "codex": base_config.get("codex", {
-                "env_var": "CODEX_CMD",
-                "default_cmd": "codex exec -"
-            }),
-            "role_defaults": base_config.get("role_defaults", {}),
-            "prompt_limits": base_config.get("prompt_limits", {}),
-            "task_limits": base_config.get("task_limits", {}),
-            "task_split": base_config.get("task_split", {}),
-            "paths": base_config.get("paths", {}),
-            "coordination": base_config.get("coordination", {}),
-            "outputs": base_config.get("outputs", {}),
-            "roles": role_entries,
-            "snapshot": base_config.get("snapshot", {}),
-            "agent_output": base_config.get("agent_output", {}),
-            "messages": base_config.get("messages", {}),
-            "diff_messages": base_config.get("diff_messages", {}),
-            "diff_safety": base_config.get("diff_safety", {}),
-            "diff_apply": base_config.get("diff_apply", {}),
-            "logging": base_config.get("logging", {}),
-            "feedback_loop": base_config.get("feedback_loop", {}),
-            "cli": {
-                "description": f"Multi-Agent Orchestrator für {spec.get('family_name', spec['family_id'])}.",
-                "args": base_config.get("cli", {}).get("args", {})
+        With defaults.json available, we only write family-specific values.
+        """
+        defaults_path = self.config_path / "defaults.json"
+
+        # Check if defaults.json exists
+        if defaults_path.exists():
+            # NEW BEHAVIOR: Only write family-specific values
+            family_id = spec["family_id"]
+            main_config = {
+                "final_role_id": spec["final_role_id"],
+                "roles": role_entries,
+                "cli": {
+                    "description": f"Multi-Agent Orchestrator für {spec.get('family_name', family_id)}."
+                },
+                "diff_safety": {
+                    "allowlist": [
+                        f"config/{family_id}_main.json",
+                        f"config/{family_id}_roles/*"
+                    ]
+                }
             }
-        }
+        else:
+            # OLD BEHAVIOR: Full config for backwards compatibility
+            # Load developer_main.json as base for defaults
+            default_config_path = self.config_path / "developer_main.json"
+            if default_config_path.exists():
+                base_config = load_config_with_defaults(default_config_path)
+            else:
+                base_config = {}
+
+            main_config = {
+                "system_rules": spec.get("system_rules", base_config.get("system_rules", "")),
+                "final_role_id": spec["final_role_id"],
+                "summary_max_chars": base_config.get("summary_max_chars", 1400),
+                "final_summary_max_chars": base_config.get("final_summary_max_chars", 2400),
+                "codex": base_config.get("codex", {
+                    "env_var": "CODEX_CMD",
+                    "default_cmd": "codex exec -"
+                }),
+                "role_defaults": base_config.get("role_defaults", {}),
+                "prompt_limits": base_config.get("prompt_limits", {}),
+                "task_limits": base_config.get("task_limits", {}),
+                "task_split": base_config.get("task_split", {}),
+                "paths": base_config.get("paths", {}),
+                "coordination": base_config.get("coordination", {}),
+                "outputs": base_config.get("outputs", {}),
+                "roles": role_entries,
+                "snapshot": base_config.get("snapshot", {}),
+                "agent_output": base_config.get("agent_output", {}),
+                "messages": base_config.get("messages", {}),
+                "diff_messages": base_config.get("diff_messages", {}),
+                "diff_safety": base_config.get("diff_safety", {}),
+                "diff_apply": base_config.get("diff_apply", {}),
+                "logging": base_config.get("logging", {}),
+                "feedback_loop": base_config.get("feedback_loop", {}),
+                "cli": {
+                    "description": f"Multi-Agent Orchestrator für {spec.get('family_name', spec['family_id'])}.",
+                    "args": base_config.get("cli", {}).get("args", {})
+                }
+            }
 
         return main_config
 
