@@ -327,9 +327,10 @@ python multi_agent_codex.py \
 
 ```
 config/
-├── developer_main.json          # Developer-Pipeline
-├── designer_main.json           # UI/UX-Pipeline
-├── docs_main.json               # Dokumentations-Pipeline
+├── defaults.json                # ✨ NEUE globale Defaults (gemeinsam für alle Families)
+├── developer_main.json          # Developer-Pipeline (nur family-spezifisch)
+├── designer_main.json           # UI/UX-Pipeline (nur family-spezifisch)
+├── docs_main.json               # Dokumentations-Pipeline (nur family-spezifisch)
 ├── developer_roles/
 │   ├── architect.json
 │   ├── implementer.json
@@ -340,12 +341,15 @@ config/
     └── ...
 ```
 
+**NEU:** `defaults.json` enthält alle gemeinsamen Einstellungen (Limits, Messages, Snapshot-Config, etc.).
+Die `*_main.json` Dateien sind jetzt ~80% kleiner und enthalten nur noch Family-spezifische Werte (Rollen, CLI-Description, etc.).
+
 ### Hauptkonfiguration (`<family>_main.json`)
 
-**Minimal-Beispiel:**
+**Minimal-Beispiel (NEU - mit defaults.json):**
 ```json
 {
-  "system_rules": "Du bist ein hilfreicher Coding-Assistent...",
+  "final_role_id": "implementer",
   "roles": [
     {
       "id": "implementer",
@@ -354,9 +358,19 @@ config/
       "apply_diff": true
     }
   ],
-  "final_role_id": "implementer"
+  "cli": {
+    "description": "Multi-Agent Orchestrator für Software-Entwicklung"
+  },
+  "diff_safety": {
+    "allowlist": [
+      "config/my_family_main.json",
+      "config/my_family_roles/*"
+    ]
+  }
 }
 ```
+
+**Hinweis:** Alle anderen Werte (system_rules, codex, limits, messages, etc.) werden automatisch aus [defaults.json](config/defaults.json) geladen.
 
 **Mit Sharding:**
 ```json

@@ -48,6 +48,11 @@ Ein Schritt-für-Schritt Guide zum Erstellen deiner ersten eigenen `*_main.json`
 Erstelle eine komplette Familie automatisch via Natural Language mit dem [Family Creator](FAMILY_CREATOR.md):
 
 ```bash
+# Via Haupt-CLI (empfohlen)
+python multi_agent_codex.py create-family \
+  --description "Ein Team für Machine Learning: Daten-Analyse, Feature Engineering, Model Training, Evaluation"
+
+# ODER direkt (eigenständig)
 python creators/multi_family_creator.py \
   --description "Ein Team für Machine Learning: Daten-Analyse, Feature Engineering, Model Training, Evaluation"
 ```
@@ -62,13 +67,13 @@ python creators/multi_family_creator.py \
 
 ```bash
 # GraphQL Backend (klone Developer-Familie)
-python creators/multi_family_creator.py \
+python multi_agent_codex.py create-family \
   --description "GraphQL Backend Team: Schema Design, Resolver, Testing" \
   --template-from developer \
   --template-mode clone
 
 # Video Production (von Grund auf)
-python creators/multi_family_creator.py \
+python multi_agent_codex.py create-family \
   --description "Video Content Team: Storyboard, Editing, Sound, Publishing" \
   --optimize-roles \
   --interactive
@@ -129,15 +134,10 @@ cp config/docs_main.json config/my_docs_main.json
 
 Öffne deine neue Config und passe die wichtigsten Felder an:
 
+**NEU (mit defaults.json):**
 ```json
 {
-  "system_rules": "Du bist ein Experte für [DEIN BEREICH].\n\nPrinzipien:\n- [DEINE REGEL 1]\n- [DEINE REGEL 2]\n...",
-
-  "role_defaults": {
-    "timeout_sec": 1800,
-    "instances": 1
-  },
-
+  "final_role_id": "implementer",
   "roles": [
     {
       "id": "architect",
@@ -152,17 +152,27 @@ cp config/docs_main.json config/my_docs_main.json
       "apply_diff": true
     }
   ],
-
-  "final_role_id": "implementer"
+  "cli": {
+    "description": "Multi-Agent Orchestrator für [DEIN BEREICH]"
+  },
+  "diff_safety": {
+    "allowlist": [
+      "config/my_project_main.json",
+      "config/my_project_roles/*"
+    ]
+  }
 }
 ```
 
 **Wichtige Anpassungen:**
 
-1. **`system_rules`** - Deine globalen Regeln/Prinzipien
-2. **`roles`** - Welche Agenten sollen laufen (und in welcher Reihenfolge)
-3. **`final_role_id`** - Welche Rolle liefert das finale Ergebnis
-4. **`instances`** - Anzahl paralleler Instanzen pro Rolle
+1. **`roles`** - Welche Agenten sollen laufen (und in welcher Reihenfolge)
+2. **`final_role_id`** - Welche Rolle liefert das finale Ergebnis
+3. **`cli.description`** - Beschreibung deiner Familie
+4. **`diff_safety.allowlist`** - Erlaubte Pfade für Diff-Anwendung
+5. **`instances`** - Anzahl paralleler Instanzen pro Rolle
+
+**Hinweis:** Alle anderen Werte (system_rules, codex, limits, messages, etc.) werden automatisch aus `config/defaults.json` geladen. Falls du diese anpassen willst, kannst du sie in deiner Family-Config überschreiben.
 
 ### Schritt 3: Testen
 
@@ -200,13 +210,10 @@ cp examples/minimal_template.json config/my_minimal_main.json
 
 Das Minimal-Template enthält nur das Nötigste:
 
+**NEU (mit defaults.json):**
 ```json
 {
-  "system_rules": "Du bist ein hilfreicher Coding-Assistent.",
-  "codex": {
-    "env_var": "CODEX_CMD",
-    "default_cmd": "codex exec -"
-  },
+  "final_role_id": "implementer",
   "roles": [
     {
       "id": "implementer",
@@ -215,7 +222,9 @@ Das Minimal-Template enthält nur das Nötigste:
       "apply_diff": true
     }
   ],
-  "final_role_id": "implementer"
+  "cli": {
+    "description": "Minimal-Config für direkte Code-Implementierung"
+  }
 }
 ```
 
@@ -223,6 +232,7 @@ Das Minimal-Template enthält nur das Nötigste:
 - Nur **eine Rolle** (Implementer) läuft
 - Keine Pipeline, keine Dependencies
 - Perfekt für einfache, direkte Tasks
+- Alle anderen Werte kommen aus `defaults.json`
 
 ### Schritt 3: Erweitern
 

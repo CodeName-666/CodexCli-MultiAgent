@@ -32,6 +32,34 @@ def load_json(path: Path) -> Dict[str, object]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def deep_merge(base: Dict[str, object], override: Dict[str, object]) -> Dict[str, object]:
+    """Deep merge two dictionaries, override wins conflicts."""
+    result = base.copy()
+    for key, value in override.items():
+        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+            result[key] = deep_merge(result[key], value)
+        else:
+            result[key] = value
+    return result
+
+
+def load_config_with_defaults(config_path: Path) -> Dict[str, object]:
+    """
+    Load config with defaults.json merge support.
+
+    If defaults.json exists in the same directory, it will be loaded first
+    and merged with the family-specific config. Family config wins conflicts.
+    """
+    defaults_path = config_path.parent / "defaults.json"
+    if defaults_path.exists():
+        defaults = load_json(defaults_path)
+        family_config = load_json(config_path)
+        return deep_merge(defaults, family_config)
+    else:
+        # Fallback: old behavior (backwards compatible)
+        return load_json(config_path)
+
+
 def write_json(path: Path, data: Dict[str, object]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, indent=2, ensure_ascii=True) + "\n", encoding="utf-8")
@@ -371,7 +399,7 @@ def main() -> None:
     args = parse_args()
     config_path = Path(args.config).resolve()
     try:
-        cfg = load_json(config_path)
+        cfg = load_config_with_defaults(config_path)
     except FileNotFoundError as exc:
         print(f"Error: config not found: {exc}", file=sys.stderr)
         sys.exit(2)

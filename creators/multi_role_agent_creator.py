@@ -26,6 +26,8 @@ from multi_agent.utils import get_codex_cmd, parse_cmd
 try:
     from creators.multi_role_agent_creator_legacy import (
         load_json,
+        load_config_with_defaults,
+        deep_merge,
         write_json,
         slugify,
         parse_context_entries,
@@ -644,7 +646,7 @@ def main() -> None:
     config_path = Path(args.config).resolve()
 
     try:
-        cfg = load_json(config_path)
+        cfg = load_config_with_defaults(config_path)
     except FileNotFoundError as exc:
         print(f"Error: config not found: {exc}", file=sys.stderr)
         sys.exit(2)

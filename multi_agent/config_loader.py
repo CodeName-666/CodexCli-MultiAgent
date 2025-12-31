@@ -11,6 +11,17 @@ def load_json(path: Path) -> Dict[str, object]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def deep_merge(base: Dict[str, object], override: Dict[str, object]) -> Dict[str, object]:
+    """Deep merge two dictionaries, override wins conflicts."""
+    result = base.copy()
+    for key, value in override.items():
+        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+            result[key] = deep_merge(result[key], value)
+        else:
+            result[key] = value
+    return result
+
+
 def _coerce_str_list(value: object) -> list[str]:
     if value is None:
         return []
@@ -76,8 +87,24 @@ def load_role_config(
 
 
 def load_app_config(config_path: Path) -> AppConfig:
-    data = load_json(config_path)
+    """
+    Load application config with defaults.json merge support.
+
+    If defaults.json exists in the same directory, it will be loaded first
+    and merged with the family-specific config. Family config wins conflicts.
+    """
     base_dir = config_path.parent
+    defaults_path = base_dir / "defaults.json"
+
+    # Load defaults if available
+    if defaults_path.exists():
+        defaults = load_json(defaults_path)
+        family_config = load_json(config_path)
+        data = deep_merge(defaults, family_config)
+    else:
+        # Fallback: old behavior (backwards compatible)
+        data = load_json(config_path)
+
     role_defaults = data.get("role_defaults") or {}
     roles = [load_role_config(role_entry, base_dir, role_defaults) for role_entry in data["roles"]]
     final_role_id = str(data.get("final_role_id") or (roles[-1].id if roles else ""))

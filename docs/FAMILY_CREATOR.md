@@ -21,11 +21,13 @@ Ein Tool zur automatischen Erstellung vollständiger Agent-Familien aus natürli
 
 Der **Family Creator** (`multi_family_creator.py`) automatisiert die Erstellung kompletter Agent-Familien. Statt manuell 5-7 JSON-Dateien zu schreiben, beschreibst du einfach die Familie in natürlicher Sprache, und Codex CLI generiert:
 
-- **Hauptkonfiguration** (`<family>_main.json`)
+- **Hauptkonfiguration** (`<family>_main.json`) - Nur family-spezifische Werte (nutzt `defaults.json`)
 - **Alle Rollen-Dateien** (`<family>_roles/*.json`)
 - **Prompt-Templates** für jede Rolle
 - **Dependencies** zwischen Rollen
 - **Expected-Sections** für Output-Validierung
+
+**NEU:** Family-Configs sind jetzt ~80% kleiner, da globale Einstellungen automatisch aus `config/defaults.json` geladen werden.
 
 ### Was wird generiert?
 
@@ -58,9 +60,16 @@ Keine zusätzliche Installation nötig - nutzt Python Standard Library + Codex C
 ### Einfachste Verwendung
 
 ```bash
+# Via Haupt-CLI (empfohlen)
+python multi_agent_codex.py create-family \
+  --description "Ein Team für Machine Learning: Daten-Analyse, Feature Engineering, Model Training, Evaluation"
+
+# ODER direkt/eigenständig
 python creators/multi_family_creator.py \
   --description "Ein Team für Machine Learning: Daten-Analyse, Feature Engineering, Model Training, Evaluation"
 ```
+
+> **Hinweis:** Beide Aufrufe sind funktional identisch. Das Haupt-CLI bietet eine einheitlichere Schnittstelle.
 
 **Output:**
 ```
@@ -81,6 +90,13 @@ Schreibe Familie-Konfiguration...
 ### Mit Optimierung
 
 ```bash
+# Via Haupt-CLI
+python multi_agent_codex.py create-family \
+  --description "Backend API Team mit GraphQL, Testing und Deployment" \
+  --optimize-roles \
+  --interactive
+
+# ODER direkt
 python creators/multi_family_creator.py \
   --description "Backend API Team mit GraphQL, Testing und Deployment" \
   --optimize-roles \
@@ -132,6 +148,11 @@ Dies:
 Erstelle Familie komplett neu von Codex.
 
 ```bash
+# Via Haupt-CLI
+python multi_agent_codex.py create-family \
+  --description "Ein Team für Video Content Creation: Storyboard, Editing, Sound Design, Publishing"
+
+# ODER direkt
 python creators/multi_family_creator.py \
   --description "Ein Team für Video Content Creation: Storyboard, Editing, Sound Design, Publishing"
 ```
@@ -154,6 +175,13 @@ python creators/multi_family_creator.py \
 Kopiere existierende Familie-Struktur 1:1 und passe an.
 
 ```bash
+# Via Haupt-CLI
+python multi_agent_codex.py create-family \
+  --description "Backend API Team mit REST, GraphQL, Testing" \
+  --template-from developer \
+  --template-mode clone
+
+# ODER direkt
 python creators/multi_family_creator.py \
   --description "Backend API Team mit REST, GraphQL, Testing" \
   --template-from developer \
