@@ -33,7 +33,8 @@ python multi_agent_codex.py create-role --nl-description "Ein Code Reviewer"
 **Neu hier? Starte mit diesen Guides:**
 
 - **[Quick Start Guide](docs/QUICKSTART.md)** ← **Starte hier!** Eigene Konfiguration in 5 Minuten
-- **[Family Creator](docs/FAMILY_CREATOR.md)** ← **NEU!** Automatische Familie-Generierung via Natural Language
+- **[Multi-CLI Support](docs/MULTI_CLI.md)** ← **NEU!** Verschiedene CLI-Provider (Codex, Claude, Gemini) pro Rolle
+- **[Family Creator](docs/FAMILY_CREATOR.md)** ← Automatische Familie-Generierung via Natural Language
 - **[Vollständige Konfiguration](docs/CONFIGURATION.md)** - Referenz aller Config-Optionen
 - **[Eigene Rollen erstellen](docs/CUSTOM_ROLES.md)** - Custom Agent-Rollen schreiben
 - **[Sharding (Parallelisierung)](docs/SHARDING.md)** - Echte parallele Agent-Ausführung

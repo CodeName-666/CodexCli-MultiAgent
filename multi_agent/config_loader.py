@@ -57,6 +57,11 @@ def load_role_config(
     reshard_on_timeout_124 = role_entry.get("reshard_on_timeout_124", defaults.get("reshard_on_timeout_124", True))
     max_reshard_depth = role_entry.get("max_reshard_depth", defaults.get("max_reshard_depth", 2))
 
+    # CLI provider configuration
+    cli_provider = role_entry.get("cli_provider", defaults.get("cli_provider"))
+    cli_parameters_raw = role_entry.get("cli_parameters", defaults.get("cli_parameters"))
+    cli_parameters = dict(cli_parameters_raw) if cli_parameters_raw else None
+
     return RoleConfig(
         id=role_id,
         name=str(data.get("name") or role_id),
@@ -72,6 +77,8 @@ def load_role_config(
         retries=max(0, int(retries)),
         codex_cmd=str(role_entry.get("codex_cmd")) if role_entry.get("codex_cmd") else None,
         model=str(role_entry.get("model")) if role_entry.get("model") else None,
+        cli_provider=str(cli_provider) if cli_provider else None,
+        cli_parameters=cli_parameters,
         expected_sections=_coerce_str_list(role_entry.get("expected_sections")),
         run_if_review_critical=bool(role_entry.get("run_if_review_critical", False)),
         # Sharding fields
@@ -95,6 +102,7 @@ def load_app_config(config_path: Path) -> AppConfig:
     """
     base_dir = config_path.parent
     defaults_path = base_dir / "defaults.json"
+    cli_config_path = base_dir / "cli_config.json"
 
     # Load defaults if available
     if defaults_path.exists():
@@ -104,6 +112,12 @@ def load_app_config(config_path: Path) -> AppConfig:
     else:
         # Fallback: old behavior (backwards compatible)
         data = load_json(config_path)
+
+    # Load CLI provider config if available
+    cli_providers = {}
+    if cli_config_path.exists():
+        cli_config = load_json(cli_config_path)
+        cli_providers = cli_config.get("cli_providers", {})
 
     role_defaults = data.get("role_defaults") or {}
     roles = [load_role_config(role_entry, base_dir, role_defaults) for role_entry in data["roles"]]
@@ -128,6 +142,7 @@ def load_app_config(config_path: Path) -> AppConfig:
         messages=data["messages"],
         diff_messages=data["diff_messages"],
         cli=data["cli"],
+        cli_providers=cli_providers,
         role_defaults=role_defaults,
         prompt_limits=data.get("prompt_limits") or {},
         task_limits=task_limits,

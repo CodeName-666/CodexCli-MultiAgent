@@ -23,6 +23,9 @@ class RoleConfig:
     run_if_review_critical: bool
     codex_cmd: str | None
     model: str | None
+    # CLI Provider configuration
+    cli_provider: str | None = None  # "codex", "claude", "gemini" - defaults to global default
+    cli_parameters: Dict[str, object] | None = None  # Provider-specific parameters
     # Sharding configuration
     shard_mode: str = "none"
     shard_count: int | None = None
@@ -51,6 +54,7 @@ class AppConfig:
     messages: Dict[str, str]
     diff_messages: Dict[str, str]
     cli: Dict[str, object]
+    cli_providers: Dict[str, object]  # CLI provider configurations
     role_defaults: Dict[str, object]
     prompt_limits: Dict[str, object]
     task_limits: Dict[str, object]

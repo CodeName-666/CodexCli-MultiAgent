@@ -1,0 +1,79 @@
+{
+  "cli": {
+    "description": "Multi-CLI Example: Zeigt wie verschiedene Rollen verschiedene CLI-Provider nutzen können."
+  },
+  "final_role_id": "integrator",
+  "diff_safety": {
+    "allowlist": [
+      "config/developer_main.json",
+      "config/developer_roles/*"
+    ]
+  },
+  "roles": [
+    {
+      "id": "architect",
+      "file": "developer_roles/architect.json",
+      "instances": 1,
+      "depends_on": [],
+      "timeout_sec": 1800,
+      "cli_provider": "claude",
+      "model": "sonnet",
+      "cli_parameters": {
+        "max_turns": 3,
+        "output_format": "text",
+        "allowed_tools": "Read,Glob,Grep"
+      },
+      "expected_sections": [
+        "# Architektur",
+        "- Ziele:",
+        "- Komponenten:",
+        "- Plan"
+      ]
+    },
+    {
+      "id": "implementer",
+      "file": "developer_roles/implementer.json",
+      "apply_diff": true,
+      "instances": 1,
+      "depends_on": ["architect"],
+      "cli_provider": "codex",
+      "expected_sections": [
+        "# Implementierung",
+        "```diff"
+      ]
+    },
+    {
+      "id": "tester",
+      "file": "developer_roles/tester.json",
+      "apply_diff": true,
+      "instances": 1,
+      "depends_on": ["implementer"],
+      "timeout_sec": 900,
+      "cli_provider": "gemini",
+      "model": "gemini-2.5-flash",
+      "cli_parameters": {
+        "output_format": "text",
+        "temperature": 0.7
+      },
+      "expected_sections": [
+        "# Tests",
+        "```diff"
+      ]
+    },
+    {
+      "id": "integrator",
+      "file": "developer_roles/integrator.json",
+      "instances": 1,
+      "depends_on": ["architect", "implementer", "tester"],
+      "cli_provider": "claude",
+      "model": "haiku",
+      "cli_parameters": {
+        "max_turns": 1
+      },
+      "expected_sections": [
+        "# Final",
+        "- Zusammenfassung:"
+      ]
+    }
+  ]
+}

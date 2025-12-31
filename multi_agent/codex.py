@@ -10,21 +10,51 @@ from .utils import get_status_text, write_text
 
 
 class CodexClient:
-    def __init__(self, codex_cmd: List[str], timeout_sec: int) -> None:
-        self._codex_cmd = codex_cmd
-        self._timeout_sec = timeout_sec
+    """
+    Generic CLI client that supports multiple providers (Codex, Claude, Gemini).
 
-    async def run(self, prompt: str, workdir: Path) -> Tuple[int, str, str]:
+    This class handles command execution with stdin support for any CLI provider.
+    """
+
+    def __init__(self, cli_cmd: List[str], timeout_sec: int, stdin_mode: bool = True) -> None:
+        """
+        Initialize CLI client.
+
+        Args:
+            cli_cmd: Full command to execute (e.g., ["codex", "exec", "-"] or ["claude", "-p"])
+            timeout_sec: Timeout in seconds
+            stdin_mode: If True, send prompt via stdin; if False, prompt is in cli_cmd
+        """
+        self._cli_cmd = cli_cmd
+        self._timeout_sec = timeout_sec
+        self._stdin_mode = stdin_mode
+
+    async def run(self, prompt: str | None, workdir: Path) -> Tuple[int, str, str]:
+        """
+        Execute the CLI command with optional stdin prompt.
+
+        Args:
+            prompt: Prompt to send (via stdin or None if already in command)
+            workdir: Working directory for execution
+
+        Returns:
+            Tuple of (returncode, stdout, stderr)
+        """
         proc = await asyncio.create_subprocess_exec(
-            *self._codex_cmd,
-            stdin=asyncio.subprocess.PIPE,
+            *self._cli_cmd,
+            stdin=asyncio.subprocess.PIPE if self._stdin_mode else None,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             cwd=str(workdir),
         )
         try:
+            if self._stdin_mode and prompt:
+                stdin_data = prompt.encode("utf-8")
+            else:
+                stdin_data = None
+
             stdout_b, stderr_b = await asyncio.wait_for(
-                proc.communicate(prompt.encode("utf-8")),
+                proc.communicate(stdin_data),
                 timeout=self._timeout_sec,
             )
             rc = proc.returncode or 0

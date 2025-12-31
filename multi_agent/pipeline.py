@@ -8,6 +8,7 @@ import time
 from pathlib import Path
 from typing import Dict, List
 
+from .cli_adapter import CLIAdapter
 from .codex import AgentExecutor, CodexClient
 from .coordination import CoordinationConfig, CoordinationLog, TaskBoard
 from .diff_applier import BaseDiffApplier, UnifiedDiffApplier
@@ -835,14 +836,58 @@ class Pipeline:
 
     @staticmethod
     def _build_executor(cfg: AppConfig, role_cfg: RoleConfig, default_timeout: int) -> AgentExecutor:
-        if role_cfg.codex_cmd:
-            cmd = parse_cmd(role_cfg.codex_cmd)
-        else:
-            cmd = get_codex_cmd(cfg.codex_env_var, cfg.codex_default_cmd)
+        """
+        Build executor for a role, supporting multiple CLI providers.
+
+        Priority:
+        1. Role-specific codex_cmd (legacy support)
+        2. Role-specific cli_provider + cli_parameters
+        3. Global default (codex)
+        """
         timeout_sec = role_cfg.timeout_sec or int(default_timeout)
         if timeout_sec <= 0:
             timeout_sec = int(cfg.role_defaults.get("timeout_sec", 1200))
-        client = CodexClient(cmd, timeout_sec=timeout_sec)
+
+        # Legacy support: role-specific codex_cmd
+        if role_cfg.codex_cmd:
+            cmd = parse_cmd(role_cfg.codex_cmd)
+            client = CodexClient(cmd, timeout_sec=timeout_sec, stdin_mode=True)
+            return AgentExecutor(client, cfg.agent_output, cfg.messages)
+
+        # New multi-provider support
+        if role_cfg.cli_provider and cfg.cli_providers:
+            try:
+                # Initialize CLI adapter (lazy init, will create default if missing)
+                config_dir = Path(__file__).parent.parent / "config"
+                cli_config_path = config_dir / "cli_config.json"
+                cli_adapter = CLIAdapter(cli_config_path)
+
+                # Build command using adapter
+                cmd, stdin_content, multiplier = cli_adapter.build_command_for_role(
+                    provider_id=role_cfg.cli_provider,
+                    prompt=None,  # Will be provided later in run_agent
+                    model=role_cfg.model,
+                    timeout_sec=timeout_sec,
+                    custom_params=role_cfg.cli_parameters or {}
+                )
+
+                # Apply timeout multiplier
+                adjusted_timeout = int(timeout_sec * multiplier)
+
+                # Determine if we need stdin mode
+                stdin_mode = stdin_content is not None or cli_adapter.get_provider(role_cfg.cli_provider).input_mode != "flag"
+
+                client = CodexClient(cmd, timeout_sec=adjusted_timeout, stdin_mode=stdin_mode)
+                return AgentExecutor(client, cfg.agent_output, cfg.messages)
+
+            except Exception as e:
+                # Fallback to default if provider config fails
+                print(f"Warning: Failed to load CLI provider '{role_cfg.cli_provider}': {e}")
+                print("Falling back to default Codex CLI...")
+
+        # Default: use global codex config
+        cmd = get_codex_cmd(cfg.codex_env_var, cfg.codex_default_cmd)
+        client = CodexClient(cmd, timeout_sec=timeout_sec, stdin_mode=True)
         return AgentExecutor(client, cfg.agent_output, cfg.messages)
 
     @staticmethod
