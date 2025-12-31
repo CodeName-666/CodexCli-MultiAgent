@@ -11,7 +11,8 @@
       "Bash(wc:*)",
       "Bash(python creators/multi_family_creator.py:*)",
       "Bash(python creators/multi_role_agent_creator.py:*)",
-      "Bash(python creators/multi_role_agent_creator_legacy.py:*)"
+      "Bash(python creators/multi_role_agent_creator_legacy.py:*)",
+      "Bash(python:*)"
     ]
   }
 }

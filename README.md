@@ -16,6 +16,12 @@ python multi_agent_codex.py --task "Implementiere User-Login"
 
 # Mit automatischer Code-Anwendung
 python multi_agent_codex.py --task "Implementiere User-Login" --apply
+
+# ODER: Neue Agent-Familie erstellen
+python multi_agent_codex.py create-family --description "Ein Team für ML-Entwicklung"
+
+# ODER: Neue Agent-Rolle erstellen
+python multi_agent_codex.py create-role --nl-description "Ein Code Reviewer"
 ```
 
 **Das war's!** Die Agenten analysieren deinen Code, erstellen einen Plan und implementieren die Lösung.
@@ -32,11 +38,32 @@ python multi_agent_codex.py --task "Implementiere User-Login" --apply
 - **[Eigene Rollen erstellen](docs/CUSTOM_ROLES.md)** - Custom Agent-Rollen schreiben
 - **[Sharding (Parallelisierung)](docs/SHARDING.md)** - Echte parallele Agent-Ausführung
 
-**Tools:**
+**CLI-Unterkommandos (NEU):**
+
+Das `multi_agent_codex.py` CLI unterstützt jetzt Unterkommandos für Creator-Funktionen:
+
+```bash
+# Familie erstellen (integriert in Haupt-CLI)
+python multi_agent_codex.py create-family --description "Team für X" [optionen]
+
+# Rolle erstellen (integriert in Haupt-CLI)
+python multi_agent_codex.py create-role --nl-description "Agent für Y" [optionen]
+
+# Standard-Task ausführen (rückwärtskompatibel)
+python multi_agent_codex.py --task "Aufgabe" --apply
+```
+
+**Creator-Tools (eigenständig):**
 - **[creators/multi_family_creator.py](creators/multi_family_creator.py)** - Erstelle komplette Familien aus Natural Language
 - **[creators/multi_role_agent_creator.py](creators/multi_role_agent_creator.py)** - Erstelle einzelne Rollen (Natural Language Mode)
   - **[Natural Language Mode](docs/ROLE_CREATOR_NL.md)** - Rollen via Beschreibung erstellen
   - **[Legacy Mode](creators/multi_role_agent_creator_legacy.py)** - Manuelle Detail-Kontrolle
+
+Die Creator-Tools können weiterhin eigenständig verwendet werden:
+```bash
+python creators/multi_family_creator.py --description "..."
+python creators/multi_role_agent_creator.py --nl-description "..."
+```
 
 **Beispiele:**
 - [Beispiel-Configs](examples/) - Fertige Konfigurationen zum Kopieren
