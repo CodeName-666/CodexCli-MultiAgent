@@ -27,9 +27,16 @@ python multi_agent_codex.py --task "Implementiere User-Login" --apply
 **Neu hier? Starte mit diesen Guides:**
 
 - **[Quick Start Guide](docs/QUICKSTART.md)** ← **Starte hier!** Eigene Konfiguration in 5 Minuten
+- **[Family Creator](docs/FAMILY_CREATOR.md)** ← **NEU!** Automatische Familie-Generierung via Natural Language
 - **[Vollständige Konfiguration](docs/CONFIGURATION.md)** - Referenz aller Config-Optionen
 - **[Eigene Rollen erstellen](docs/CUSTOM_ROLES.md)** - Custom Agent-Rollen schreiben
 - **[Sharding (Parallelisierung)](docs/SHARDING.md)** - Echte parallele Agent-Ausführung
+
+**Tools:**
+- **[creators/multi_family_creator.py](creators/multi_family_creator.py)** - Erstelle komplette Familien aus Natural Language
+- **[creators/multi_role_agent_creator.py](creators/multi_role_agent_creator.py)** - Erstelle einzelne Rollen (Natural Language Mode)
+  - **[Natural Language Mode](docs/ROLE_CREATOR_NL.md)** - Rollen via Beschreibung erstellen
+  - **[Legacy Mode](creators/multi_role_agent_creator_legacy.py)** - Manuelle Detail-Kontrolle
 
 **Beispiele:**
 - [Beispiel-Configs](examples/) - Fertige Konfigurationen zum Kopieren

@@ -7,10 +7,11 @@ Ein Schritt-für-Schritt Guide zum Erstellen deiner ersten eigenen `*_main.json`
 ## Inhaltsverzeichnis
 
 1. [Wann brauche ich eine eigene Config?](#wann-brauche-ich-eine-eigene-config)
-2. [Option 1: Existierende Config verwenden](#option-1-existierende-config-verwenden)
-3. [Option 2: Eigene Config erstellen](#option-2-eigene-config-erstellen)
-4. [Option 3: Von Minimal-Template starten](#option-3-von-minimal-template-starten)
-5. [Nächste Schritte](#nächste-schritte)
+2. [Option 0: Family Creator (NEU!)](#option-0-family-creator-automatisch)
+3. [Option 1: Existierende Config verwenden](#option-1-existierende-config-verwenden)
+4. [Option 2: Eigene Config erstellen](#option-2-eigene-config-erstellen)
+5. [Option 3: Von Minimal-Template starten](#option-3-von-minimal-template-starten)
+6. [Nächste Schritte](#nächste-schritte)
 
 ---
 
@@ -37,6 +38,48 @@ Ein Schritt-für-Schritt Guide zum Erstellen deiner ersten eigenen `*_main.json`
 - `product_main.json` - Product Management
 - `data_main.json` - Data Engineering
 - `research_main.json` - Research & Analysis
+
+---
+
+## Option 0: Family Creator (Automatisch)
+
+**🆕 NEU: Die schnellste Methode!**
+
+Erstelle eine komplette Familie automatisch via Natural Language mit dem [Family Creator](FAMILY_CREATOR.md):
+
+```bash
+python creators/multi_family_creator.py \
+  --description "Ein Team für Machine Learning: Daten-Analyse, Feature Engineering, Model Training, Evaluation"
+```
+
+**Was passiert:**
+1. Codex generiert Familie-Struktur aus deiner Beschreibung
+2. Alle Rollen werden automatisch erstellt (mit Prompts, Dependencies, etc.)
+3. Dateien werden geschrieben: `config/ml_team_main.json` + `config/ml_team_roles/*.json`
+4. **Fertig!** Familie ist sofort nutzbar
+
+**Beispiele:**
+
+```bash
+# GraphQL Backend (klone Developer-Familie)
+python creators/multi_family_creator.py \
+  --description "GraphQL Backend Team: Schema Design, Resolver, Testing" \
+  --template-from developer \
+  --template-mode clone
+
+# Video Production (von Grund auf)
+python creators/multi_family_creator.py \
+  --description "Video Content Team: Storyboard, Editing, Sound, Publishing" \
+  --optimize-roles \
+  --interactive
+```
+
+**Wann nutzen:**
+- ✅ Neue Familie schnell erstellen
+- ✅ Codex soll Struktur vorschlagen
+- ✅ Keine manuelle JSON-Arbeit
+
+**Vollständige Dokumentation:** [FAMILY_CREATOR.md](FAMILY_CREATOR.md)
 
 ---
 
