@@ -10,4 +10,4 @@ DEFAULT_RETRIES = 1
 DEFAULT_SNAPSHOT_MAX_BYTES = 1_200_000
 DEFAULT_SNAPSHOT_CACHE = ".multi_agent_runs/snapshot_cache.json"
 
-DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent.parent / "config" / "developer_main.json"
+DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent.parent / "agent_families" / "developer_main.json"

@@ -5,14 +5,14 @@
   "final_role_id": "product_integrator",
   "diff_safety": {
     "allowlist": [
-      "config/product_main.json",
-      "config/product_roles/*"
+      "agent_families/product_main.json",
+      "agent_families/product_agents/*"
     ]
   },
   "roles": [
     {
       "id": "product_architect",
-      "file": "product_roles/product_architect.json",
+      "file": "product_agents/product_architect.json",
       "instances": 1,
       "depends_on": [],
       "expected_sections": [
@@ -25,11 +25,17 @@
         "- Plan (max 8 Schritte):"
       ],
       "timeout_sec": 1800,
-      "max_prompt_chars": 16000
+      "max_prompt_chars": 16000,
+      "cli_provider": "claude",
+      "model": "sonnet",
+      "cli_parameters": {
+        "max_turns": 3,
+        "allowed_tools": "Read,Glob,Grep"
+      }
     },
     {
       "id": "requirements_writer",
-      "file": "product_roles/requirements_writer.json",
+      "file": "product_agents/requirements_writer.json",
       "instances": 1,
       "depends_on": [
         "product_architect"
@@ -40,11 +46,12 @@
         "- Akzeptanzkriterien:",
         "- Nicht-Ziele:",
         "- Offene Punkte:"
-      ]
+      ],
+      "cli_provider": "codex"
     },
     {
       "id": "acceptance_reviewer",
-      "file": "product_roles/acceptance_reviewer.json",
+      "file": "product_agents/acceptance_reviewer.json",
       "instances": 1,
       "depends_on": [
         "requirements_writer"
@@ -54,11 +61,17 @@
         "- Findings:",
         "- Risiko/Impact:",
         "- Empfohlene Anpassungen:"
-      ]
+      ],
+      "cli_provider": "claude",
+      "model": "opus",
+      "cli_parameters": {
+        "max_turns": 2,
+        "append_system_prompt": "Fokus: Security, Performance, Maintainability"
+      }
     },
     {
       "id": "product_integrator",
-      "file": "product_roles/product_integrator.json",
+      "file": "product_agents/product_integrator.json",
       "instances": 1,
       "depends_on": [
         "product_architect",
@@ -69,7 +82,12 @@
         "# Final",
         "- Zusammenfassung:",
         "- Naechste Schritte:"
-      ]
+      ],
+      "cli_provider": "claude",
+      "model": "haiku",
+      "cli_parameters": {
+        "max_turns": 1
+      }
     }
   ]
 }

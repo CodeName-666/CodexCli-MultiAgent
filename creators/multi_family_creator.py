@@ -4,7 +4,7 @@ multi_family_creator.py - Create complete agent families from natural language d
 
 This tool generates:
 - Main configuration file (<family>_main.json)
-- All role definition files (<family>_roles/*.json)
+- All role definition files (<family>_agents/*.json)
 
 Using Codex CLI for intelligent generation of role specs and prompt templates.
 """
@@ -119,7 +119,7 @@ def parse_args(argv: List[str] | None = None) -> argparse.Namespace:
     p.add_argument(
         "--output-dir",
         default="config",
-        help="Output directory for family config (default: config/)"
+        help="Output directory for family config (default: agent_families/)"
     )
     p.add_argument(
         "--dry-run",
@@ -478,7 +478,7 @@ class FamilyCreator:
 
         print(f"\n✓ Familie erstellt: {family_spec['family_id']}")
         print(f"  Haupt-Config: {self.config_path}/{family_spec['family_id']}_main.json")
-        print(f"  Rollen-Dir:   {self.config_path}/{family_spec['family_id']}_roles/")
+        print(f"  Rollen-Dir:   {self.config_path}/{family_spec['family_id']}_agents/")
 
     def _load_template(self, template_ref: str) -> Dict:
         """
@@ -757,7 +757,7 @@ class FamilyCreator:
             # Create entry for main.json
             entry = {
                 "id": role_id,
-                "file": f"{family_id}_roles/{role_id}.json",
+                "file": f"{family_id}_agents/{role_id}.json",
                 "instances": role.get("instances", 1),
                 "depends_on": role.get("depends_on", [])
             }
@@ -797,8 +797,8 @@ class FamilyCreator:
                 },
                 "diff_safety": {
                     "allowlist": [
-                        f"config/{family_id}_main.json",
-                        f"config/{family_id}_roles/*"
+                        f"agent_families/{family_id}_main.json",
+                        f"agent_families/{family_id}_agents/*"
                     ]
                 }
             }

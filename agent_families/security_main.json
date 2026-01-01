@@ -5,14 +5,14 @@
   "final_role_id": "security_integrator",
   "diff_safety": {
     "allowlist": [
-      "config/security_main.json",
-      "config/security_roles/*"
+      "agent_families/security_main.json",
+      "agent_families/security_agents/*"
     ]
   },
   "roles": [
     {
       "id": "threat_modeler",
-      "file": "security_roles/threat_modeler.json",
+      "file": "security_agents/threat_modeler.json",
       "instances": 1,
       "depends_on": [],
       "expected_sections": [
@@ -25,11 +25,12 @@
         "- Plan (max 8 Schritte):"
       ],
       "timeout_sec": 1800,
-      "max_prompt_chars": 16000
+      "max_prompt_chars": 16000,
+      "cli_provider": "codex"
     },
     {
       "id": "security_reviewer",
-      "file": "security_roles/security_reviewer.json",
+      "file": "security_agents/security_reviewer.json",
       "instances": 1,
       "depends_on": [
         "threat_modeler"
@@ -39,11 +40,17 @@
         "- Findings:",
         "- Risiko/Impact:",
         "- Empfohlene Fixes:"
-      ]
+      ],
+      "cli_provider": "claude",
+      "model": "opus",
+      "cli_parameters": {
+        "max_turns": 2,
+        "append_system_prompt": "Fokus: Security, Performance, Maintainability"
+      }
     },
     {
       "id": "compliance_checker",
-      "file": "security_roles/compliance_checker.json",
+      "file": "security_agents/compliance_checker.json",
       "instances": 1,
       "depends_on": [
         "security_reviewer"
@@ -53,11 +60,12 @@
         "- Anforderungen/Policies:",
         "- Abweichungen:",
         "- Empfohlene Anpassungen:"
-      ]
+      ],
+      "cli_provider": "codex"
     },
     {
       "id": "security_fixer",
-      "file": "security_roles/security_fixer.json",
+      "file": "security_agents/security_fixer.json",
       "instances": 1,
       "depends_on": [
         "compliance_checker"
@@ -70,11 +78,12 @@
         "```diff"
       ],
       "apply_diff": true,
-      "timeout_sec": 900
+      "timeout_sec": 900,
+      "cli_provider": "codex"
     },
     {
       "id": "security_integrator",
-      "file": "security_roles/security_integrator.json",
+      "file": "security_agents/security_integrator.json",
       "instances": 1,
       "depends_on": [
         "threat_modeler",
@@ -86,7 +95,12 @@
         "# Final",
         "- Zusammenfassung:",
         "- Naechste Schritte:"
-      ]
+      ],
+      "cli_provider": "claude",
+      "model": "haiku",
+      "cli_parameters": {
+        "max_turns": 1
+      }
     }
   ]
 }

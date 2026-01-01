@@ -50,7 +50,7 @@ try:
     )
 except ImportError:
     # Fallback: define essential functions inline
-    DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent.parent / "config" / "developer_main.json"
+    DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent.parent / "agent_families" / "developer_main.json"
     DEFAULT_FORMAT_SECTIONS = ["- Aufgaben:", "- Entscheidungen:", "- Offene Punkte:"]
     DEFAULT_RULE_LINES = [
         "Ausgabe muss exakt diese Abschnittsmarker enthalten.",
@@ -452,7 +452,7 @@ def parse_args(argv: List[str] | None = None) -> argparse.Namespace:
 
     # === COMMON OPTIONS ===
     common_group = p.add_argument_group("Common options (apply to both modes)")
-    common_group.add_argument("--file", dest="role_file", help="Role file path relative to config/ (default: <family>_roles/<id>.json).")
+    common_group.add_argument("--file", dest="role_file", help="Role file path relative to agent_families/ (default: <family>_agents/<id>.json).")
     common_group.add_argument("--apply-diff", action="store_true", help="Mark role as producing a diff to auto-apply.")
     common_group.add_argument("--diff-text", help="Custom diff instruction line for the prompt template.")
 
@@ -500,7 +500,7 @@ def parse_args(argv: List[str] | None = None) -> argparse.Namespace:
     p.add_argument("--no-expected-diff", action="store_true", help="Remove ```diff from expected sections.")
 
     # === CONFIG & OUTPUT ===
-    p.add_argument("--config", default=str(DEFAULT_CONFIG_PATH), help="Path to main config (e.g. config/developer_main.json).")
+    p.add_argument("--config", default=str(DEFAULT_CONFIG_PATH), help="Path to main config (e.g. agent_families/developer_main.json).")
     p.add_argument("--force", action="store_true", help="Overwrite existing role file and id entry.")
 
     return p.parse_args(argv)

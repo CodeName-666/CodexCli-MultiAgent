@@ -227,12 +227,12 @@ python multi_agent_codex.py --task "..."
 
 # Designer für UI-Aufgaben
 python multi_agent_codex.py \
-  --config config/designer_main.json \
+  --config agent_families/designer_main.json \
   --task "Redesigne Dashboard"
 
 # Docs für Dokumentation
 python multi_agent_codex.py \
-  --config config/docs_main.json \
+  --config agent_families/docs_main.json \
   --task "Schreibe API-Dokumentation"
 ```
 
@@ -327,17 +327,17 @@ python multi_agent_codex.py \
 ### Struktur
 
 ```
-config/
+agent_families/
 ├── defaults.json                # ✨ NEUE globale Defaults (gemeinsam für alle Families)
 ├── developer_main.json          # Developer-Pipeline (nur family-spezifisch)
 ├── designer_main.json           # UI/UX-Pipeline (nur family-spezifisch)
 ├── docs_main.json               # Dokumentations-Pipeline (nur family-spezifisch)
-├── developer_roles/
+├── developer_agents/
 │   ├── architect.json
 │   ├── implementer.json
 │   ├── tester.json
 │   └── ...
-└── designer_roles/
+└── designer_agents/
     ├── ui_designer.json
     └── ...
 ```
@@ -354,7 +354,7 @@ Die `*_main.json` Dateien sind jetzt ~80% kleiner und enthalten nur noch Family-
   "roles": [
     {
       "id": "implementer",
-      "file": "developer_roles/implementer.json",
+      "file": "developer_agents/implementer.json",
       "instances": 1,
       "apply_diff": true
     }
@@ -364,14 +364,14 @@ Die `*_main.json` Dateien sind jetzt ~80% kleiner und enthalten nur noch Family-
   },
   "diff_safety": {
     "allowlist": [
-      "config/my_family_main.json",
-      "config/my_family_roles/*"
+      "agent_families/my_family_main.json",
+      "agent_families/my_family_agents/*"
     ]
   }
 }
 ```
 
-**Hinweis:** Alle anderen Werte (system_rules, codex, limits, messages, etc.) werden automatisch aus [defaults.json](config/defaults.json) geladen.
+**Hinweis:** Alle anderen Werte (system_rules, codex, limits, messages, etc.) werden automatisch aus [defaults.json](agent_families/defaults.json) geladen.
 
 **Mit Sharding:**
 ```json
@@ -383,7 +383,7 @@ Die `*_main.json` Dateien sind jetzt ~80% kleiner und enthalten nur noch Family-
   "roles": [
     {
       "id": "implementer",
-      "file": "developer_roles/implementer.json",
+      "file": "developer_agents/implementer.json",
       "instances": 3,
       "shard_mode": "headings",
       "apply_diff": true
@@ -445,7 +445,7 @@ python multi_agent_codex.py --task "Implementiere Feature X"
 **Verwendung:**
 ```bash
 python multi_agent_codex.py \
-  --config config/designer_main.json \
+  --config agent_families/designer_main.json \
   --task "Erstelle Login-Formular"
 ```
 
@@ -461,7 +461,7 @@ python multi_agent_codex.py \
 **Verwendung:**
 ```bash
 python multi_agent_codex.py \
-  --config config/docs_main.json \
+  --config agent_families/docs_main.json \
   --task "Dokumentiere die API"
 ```
 
@@ -477,7 +477,7 @@ python multi_agent_codex.py \
 **Verwendung:**
 ```bash
 python multi_agent_codex.py \
-  --config config/qa_main.json \
+  --config agent_families/qa_main.json \
   --task "Erstelle Testplan für Feature X"
 ```
 
@@ -506,7 +506,7 @@ python multi_agent_codex.py [OPTIONEN]
 | Option | Beschreibung | Beispiel |
 |--------|--------------|----------|
 | `--task` | Aufgabe (inline oder `@datei`) | `--task "Füge Login hinzu"` |
-| `--config` | Config-Datei | `--config config/designer_main.json` |
+| `--config` | Config-Datei | `--config agent_families/designer_main.json` |
 | `--dir` | Arbeitsverzeichnis | `--dir /path/to/project` |
 | `--apply` | Diffs anwenden | `--apply` |
 | `--apply-confirm` | Vor jedem Diff fragen | `--apply-confirm` |

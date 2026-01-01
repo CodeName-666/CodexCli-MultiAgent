@@ -5,14 +5,14 @@
   "final_role_id": "devops_integrator",
   "diff_safety": {
     "allowlist": [
-      "config/devops_main.json",
-      "config/devops_roles/*"
+      "agent_families/devops_main.json",
+      "agent_families/devops_agents/*"
     ]
   },
   "roles": [
     {
       "id": "infra_architect",
-      "file": "devops_roles/infra_architect.json",
+      "file": "devops_agents/infra_architect.json",
       "instances": 1,
       "depends_on": [],
       "expected_sections": [
@@ -25,11 +25,17 @@
         "- Plan (max 8 Schritte):"
       ],
       "timeout_sec": 1800,
-      "max_prompt_chars": 16000
+      "max_prompt_chars": 16000,
+      "cli_provider": "claude",
+      "model": "sonnet",
+      "cli_parameters": {
+        "max_turns": 3,
+        "allowed_tools": "Read,Glob,Grep"
+      }
     },
     {
       "id": "pipeline_implementer",
-      "file": "devops_roles/pipeline_implementer.json",
+      "file": "devops_agents/pipeline_implementer.json",
       "instances": 1,
       "depends_on": [
         "infra_architect"
@@ -42,11 +48,12 @@
         "```diff"
       ],
       "apply_diff": true,
-      "timeout_sec": 900
+      "timeout_sec": 900,
+      "cli_provider": "codex"
     },
     {
       "id": "release_manager",
-      "file": "devops_roles/release_manager.json",
+      "file": "devops_agents/release_manager.json",
       "instances": 1,
       "depends_on": [
         "pipeline_implementer"
@@ -57,11 +64,12 @@
         "- Checks/Gates:",
         "- Rollback:",
         "- Offene Punkte:"
-      ]
+      ],
+      "cli_provider": "codex"
     },
     {
       "id": "reliability_reviewer",
-      "file": "devops_roles/reliability_reviewer.json",
+      "file": "devops_agents/reliability_reviewer.json",
       "instances": 1,
       "depends_on": [
         "release_manager"
@@ -71,11 +79,17 @@
         "- Findings:",
         "- Risiko/Impact:",
         "- Empfohlene Aenderungen:"
-      ]
+      ],
+      "cli_provider": "claude",
+      "model": "opus",
+      "cli_parameters": {
+        "max_turns": 2,
+        "append_system_prompt": "Fokus: Security, Performance, Maintainability"
+      }
     },
     {
       "id": "devops_integrator",
-      "file": "devops_roles/devops_integrator.json",
+      "file": "devops_agents/devops_integrator.json",
       "instances": 1,
       "depends_on": [
         "infra_architect",
@@ -87,7 +101,12 @@
         "# Final",
         "- Zusammenfassung:",
         "- Naechste Schritte:"
-      ]
+      ],
+      "cli_provider": "claude",
+      "model": "haiku",
+      "cli_parameters": {
+        "max_turns": 1
+      }
     }
   ]
 }

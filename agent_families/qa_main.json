@@ -5,14 +5,14 @@
   "final_role_id": "qa_integrator",
   "diff_safety": {
     "allowlist": [
-      "config/qa_main.json",
-      "config/qa_roles/*"
+      "agent_families/qa_main.json",
+      "agent_families/qa_agents/*"
     ]
   },
   "roles": [
     {
       "id": "test_strategist",
-      "file": "qa_roles/test_strategist.json",
+      "file": "qa_agents/test_strategist.json",
       "instances": 1,
       "depends_on": [],
       "expected_sections": [
@@ -24,11 +24,16 @@
         "- Plan (max 8 Schritte):"
       ],
       "timeout_sec": 1800,
-      "max_prompt_chars": 16000
+      "max_prompt_chars": 16000,
+      "cli_provider": "gemini",
+      "model": "gemini-2.5-flash",
+      "cli_parameters": {
+        "temperature": 0.5
+      }
     },
     {
       "id": "test_author",
-      "file": "qa_roles/test_author.json",
+      "file": "qa_agents/test_author.json",
       "instances": 1,
       "depends_on": [
         "test_strategist"
@@ -42,11 +47,16 @@
         "```diff"
       ],
       "apply_diff": true,
-      "timeout_sec": 900
+      "timeout_sec": 900,
+      "cli_provider": "gemini",
+      "model": "gemini-2.5-flash",
+      "cli_parameters": {
+        "temperature": 0.5
+      }
     },
     {
       "id": "test_executor",
-      "file": "qa_roles/test_executor.json",
+      "file": "qa_agents/test_executor.json",
       "instances": 1,
       "depends_on": [
         "test_author"
@@ -56,11 +66,16 @@
         "- Auszufuehrende Kommandos:",
         "- Erwartete Ergebnisse:",
         "- Beobachtete Risiken:"
-      ]
+      ],
+      "cli_provider": "gemini",
+      "model": "gemini-2.5-flash",
+      "cli_parameters": {
+        "temperature": 0.5
+      }
     },
     {
       "id": "bug_triager",
-      "file": "qa_roles/bug_triager.json",
+      "file": "qa_agents/bug_triager.json",
       "instances": 1,
       "depends_on": [
         "test_executor"
@@ -71,11 +86,12 @@
         "- Prioritaet/Schwere:",
         "- Repro Schritte:",
         "- Empfohlene Fixes:"
-      ]
+      ],
+      "cli_provider": "codex"
     },
     {
       "id": "qa_integrator",
-      "file": "qa_roles/qa_integrator.json",
+      "file": "qa_agents/qa_integrator.json",
       "instances": 1,
       "depends_on": [
         "test_strategist",
@@ -87,7 +103,12 @@
         "# Final",
         "- Zusammenfassung:",
         "- Naechste Schritte:"
-      ]
+      ],
+      "cli_provider": "claude",
+      "model": "haiku",
+      "cli_parameters": {
+        "max_turns": 1
+      }
     }
   ]
 }

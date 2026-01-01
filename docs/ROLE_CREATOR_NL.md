@@ -23,12 +23,12 @@ Der **Role Creator** (`multi_role_agent_creator.py`) wurde erweitert um einen **
 # Via Haupt-CLI (empfohlen)
 python multi_agent_codex.py create-role \
   --nl-description "Ein Code Reviewer der auf Bugs, Security-Issues und Best Practices prüft" \
-  --config config/developer_main.json
+  --config agent_families/developer_main.json
 
 # ODER direkt/eigenständig
 python creators/multi_role_agent_creator.py \
   --nl-description "Ein Code Reviewer der auf Bugs, Security-Issues und Best Practices prüft" \
-  --config config/developer_main.json
+  --config agent_families/developer_main.json
 ```
 
 > **Hinweis:** Beide Aufrufe sind funktional identisch. Das Haupt-CLI bietet eine einheitlichere Schnittstelle.
@@ -36,12 +36,12 @@ python creators/multi_role_agent_creator.py \
 **Output:**
 ```
 Generiere Rollen-Spezifikation via Codex (Natural Language Mode)...
-✓ Rollen-Datei erstellt: config/developer_roles/code_reviewer.json
-✓ Rolle registriert in: config/developer_main.json
+✓ Rollen-Datei erstellt: agent_families/developer_agents/code_reviewer.json
+✓ Rolle registriert in: agent_families/developer_main.json
 
 Rolle erstellt: code_reviewer
   Name: Code Reviewer
-  Datei: developer_roles/code_reviewer.json
+  Datei: developer_agents/code_reviewer.json
   Apply-Diff: Nein
 ```
 
@@ -51,7 +51,7 @@ Rolle erstellt: code_reviewer
 # Via Haupt-CLI
 python multi_agent_codex.py create-role \
   --nl-description "Ein Security Auditor der OWASP Top 10 Vulnerabilities findet und Fixes vorschlägt" \
-  --config config/security_main.json \
+  --config agent_families/security_main.json \
   --apply-diff \
   --depends-on threat_modeler \
   --lang en
@@ -59,7 +59,7 @@ python multi_agent_codex.py create-role \
 # ODER direkt
 python creators/multi_role_agent_creator.py \
   --nl-description "Ein Security Auditor der OWASP Top 10 Vulnerabilities findet und Fixes vorschlägt" \
-  --config config/security_main.json \
+  --config agent_families/security_main.json \
   --apply-diff \
   --depends-on threat_modeler \
   --lang en
@@ -71,13 +71,13 @@ python creators/multi_role_agent_creator.py \
 # Via Haupt-CLI
 python multi_agent_codex.py create-role \
   --nl-description "Ein Performance Optimizer der Bottlenecks identifiziert" \
-  --config config/developer_main.json \
+  --config agent_families/developer_main.json \
   --dry-run
 
 # ODER direkt
 python creators/multi_role_agent_creator.py \
   --nl-description "Ein Performance Optimizer der Bottlenecks identifiziert" \
-  --config config/developer_main.json \
+  --config agent_families/developer_main.json \
   --dry-run
 ```
 
@@ -129,7 +129,7 @@ Keine Dateien werden geschrieben - nur JSON-Preview.
 ```bash
 python creators/multi_role_agent_creator.py \
   --nl-description "Ein Code Reviewer der Bugs, Code-Smells und Best-Practice-Verletzungen findet" \
-  --config config/developer_main.json
+  --config agent_families/developer_main.json
 ```
 
 **Was Codex generiert:**
@@ -146,7 +146,7 @@ python creators/multi_role_agent_creator.py \
 ```bash
 python creators/multi_role_agent_creator.py \
   --nl-description "Ein Security Fixer der Vulnerabilities automatisch patcht" \
-  --config config/security_main.json \
+  --config agent_families/security_main.json \
   --apply-diff \
   --depends-on security_reviewer
 ```
@@ -165,7 +165,7 @@ python creators/multi_role_agent_creator.py \
 ```bash
 python creators/multi_role_agent_creator.py \
   --nl-description "Generiert React Components mit TypeScript, Styled-Components und Tests" \
-  --config config/designer_main.json \
+  --config agent_families/designer_main.json \
   --apply-diff \
   --lang en
 ```
@@ -182,7 +182,7 @@ python creators/multi_role_agent_creator.py \
 ```bash
 python creators/multi_role_agent_creator.py \
   --nl-description "Ein API Documentation Generator" \
-  --config config/docs_main.json \
+  --config agent_families/docs_main.json \
   --extra-instructions "Fokus auf OpenAPI 3.0 Spec, mit Beispielen und Error-Codes"
 ```
 
@@ -330,14 +330,14 @@ python creators/multi_role_agent_creator_legacy.py \
   --context architect_summary:ARCH \
   --context implementer_output:CODE \
   --rule "Findings müssen kategorisiert sein" \
-  --config config/developer_main.json
+  --config agent_families/developer_main.json
 ```
 
 **Neu (Natural Language):**
 ```bash
 python creators/multi_role_agent_creator.py \
   --nl-description "Ein Code Reviewer der Code analysiert und Findings nach Priority kategorisiert" \
-  --config config/developer_main.json
+  --config agent_families/developer_main.json
 ```
 
 Codex generiert automatisch:

@@ -14,7 +14,19 @@
       "Bash(python creators/multi_role_agent_creator_legacy.py:*)",
       "Bash(python:*)",
       "Bash(dir:*)",
-      "Bash(del *.backup)"
+      "Bash(del *.backup)",
+      "Bash(mkdir:*)",
+      "Bash(mv:*)",
+      "Bash(for dir in *_roles)",
+      "Bash(do mv \"$dir\" \"$dir%_roles_agents\")",
+      "Bash(done)",
+      "Bash(for file in *_main.json)",
+      "Bash(do sed -i 's/_roles\\\\//_agents\\\\//g' \"$file\")",
+      "Bash(do sed -i 's/\"\"config\\\\//\"\"agent_families\\\\//g' \"$file\")",
+      "Bash(for file in *.md)",
+      "Bash(do sed -i 's/config\\\\//agent_families\\\\//g; s/_roles\\\\//_agents\\\\//g; s/_roles:/_agents:/g; s/_roles\\)/_agents\\)/g' \"$file\")",
+      "Bash(for file in *.json)",
+      "Bash(do sed -i 's/config\\\\//agent_families\\\\//g; s/_roles\\\\//_agents\\\\//g' \"$file\")"
     ]
   }
 }

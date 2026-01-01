@@ -5,14 +5,14 @@
   "final_role_id": "integrator",
   "diff_safety": {
     "allowlist": [
-      "config/developer_main.json",
-      "config/developer_roles/*"
+      "agent_families/developer_main.json",
+      "agent_families/developer_agents/*"
     ]
   },
   "roles": [
     {
       "id": "architect",
-      "file": "developer_roles/architect.json",
+      "file": "../agent_families/developer_agents/architect.json",
       "instances": 1,
       "depends_on": [],
       "timeout_sec": 1800,
@@ -32,7 +32,7 @@
     },
     {
       "id": "implementer",
-      "file": "developer_roles/implementer.json",
+      "file": "../agent_families/developer_agents/implementer.json",
       "apply_diff": true,
       "instances": 1,
       "depends_on": ["architect"],
@@ -44,7 +44,7 @@
     },
     {
       "id": "tester",
-      "file": "developer_roles/tester.json",
+      "file": "../agent_families/developer_agents/tester.json",
       "apply_diff": true,
       "instances": 1,
       "depends_on": ["implementer"],
@@ -62,7 +62,7 @@
     },
     {
       "id": "integrator",
-      "file": "developer_roles/integrator.json",
+      "file": "../agent_families/developer_agents/integrator.json",
       "instances": 1,
       "depends_on": ["architect", "implementer", "tester"],
       "cli_provider": "claude",

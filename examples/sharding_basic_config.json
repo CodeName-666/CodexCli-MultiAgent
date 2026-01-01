@@ -9,7 +9,7 @@
   "roles": [
     {
       "id": "implementer",
-      "file": "../config/developer_roles/implementer.json",
+      "file": "../agent_families/developer_agents/implementer.json",
       "instances": 3,
       "shard_mode": "headings",
       "apply_diff": true,

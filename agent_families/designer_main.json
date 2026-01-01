@@ -5,16 +5,16 @@
   "final_role_id": "ui_integrator",
   "diff_safety": {
     "allowlist": [
-      "config/developer_main.json",
-      "config/designer_main.json",
-      "config/developer_roles/*",
-      "config/designer_roles/*"
+      "agent_families/developer_main.json",
+      "agent_families/designer_main.json",
+      "agent_families/developer_agents/*",
+      "agent_families/designer_agents/*"
     ]
   },
   "roles": [
     {
       "id": "ui_architect",
-      "file": "designer_roles/ui_architect.json",
+      "file": "designer_agents/ui_architect.json",
       "instances": 1,
       "depends_on": [],
       "timeout_sec": 1800,
@@ -28,11 +28,17 @@
         "- Interaktionen/Flows:",
         "- Risiken:",
         "- Plan"
-      ]
+      ],
+      "cli_provider": "claude",
+      "model": "sonnet",
+      "cli_parameters": {
+        "max_turns": 3,
+        "allowed_tools": "Read,Glob,Grep"
+      }
     },
     {
       "id": "ui_designer",
-      "file": "designer_roles/ui_designer.json",
+      "file": "designer_agents/ui_designer.json",
       "instances": 1,
       "depends_on": [
         "ui_architect"
@@ -43,11 +49,12 @@
         "- Komponenten/Layout:",
         "- Design-Entscheidungen:",
         "- Offene Punkte:"
-      ]
+      ],
+      "cli_provider": "codex"
     },
     {
       "id": "ui_implementer",
-      "file": "designer_roles/ui_implementer.json",
+      "file": "designer_agents/ui_implementer.json",
       "apply_diff": true,
       "instances": 1,
       "depends_on": [
@@ -60,11 +67,12 @@
         "- Implementierungs-Entscheidungen:",
         "- Offene Punkte:",
         "```diff"
-      ]
+      ],
+      "cli_provider": "codex"
     },
     {
       "id": "ui_tester",
-      "file": "designer_roles/ui_tester.json",
+      "file": "designer_agents/ui_tester.json",
       "apply_diff": true,
       "instances": 1,
       "depends_on": [
@@ -76,11 +84,16 @@
         "- Teststrategie:",
         "- Checkliste (A11y/Responsive/States):",
         "```diff"
-      ]
+      ],
+      "cli_provider": "gemini",
+      "model": "gemini-2.5-flash",
+      "cli_parameters": {
+        "temperature": 0.5
+      }
     },
     {
       "id": "ui_reviewer",
-      "file": "designer_roles/ui_reviewer.json",
+      "file": "designer_agents/ui_reviewer.json",
       "apply_diff": true,
       "instances": 1,
       "depends_on": [
@@ -93,11 +106,17 @@
         "- Risiko/Impact:",
         "- Empfohlene Aenderungen:",
         "```diff"
-      ]
+      ],
+      "cli_provider": "claude",
+      "model": "opus",
+      "cli_parameters": {
+        "max_turns": 2,
+        "append_system_prompt": "Fokus: Security, Performance, Maintainability"
+      }
     },
     {
       "id": "ui_implementer_revision",
-      "file": "designer_roles/ui_implementer_revision.json",
+      "file": "designer_agents/ui_implementer_revision.json",
       "apply_diff": true,
       "instances": 1,
       "depends_on": [
@@ -110,11 +129,12 @@
         "- Implementierungs-Entscheidungen:",
         "- Offene Punkte:",
         "```diff"
-      ]
+      ],
+      "cli_provider": "codex"
     },
     {
       "id": "ui_integrator",
-      "file": "designer_roles/ui_integrator.json",
+      "file": "designer_agents/ui_integrator.json",
       "instances": 1,
       "depends_on": [
         "ui_architect",
@@ -128,7 +148,12 @@
         "# Final",
         "- Zusammenfassung:",
         "- Naechste Schritte:"
-      ]
+      ],
+      "cli_provider": "claude",
+      "model": "haiku",
+      "cli_parameters": {
+        "max_turns": 1
+      }
     }
   ]
 }

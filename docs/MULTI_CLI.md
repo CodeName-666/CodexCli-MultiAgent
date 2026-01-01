@@ -24,7 +24,7 @@ Der Multi-Agent Orchestrator unterstützt jetzt mehrere CLI-Provider, sodass ver
 
 ## Konfiguration
 
-### 1. CLI Provider Config (`config/cli_config.json`)
+### 1. CLI Provider Config (`static_config/cli_config.json`)
 
 Diese Datei definiert alle verfügbaren CLI-Provider und ihre Parameter:
 
@@ -113,7 +113,7 @@ Definiere den CLI-Provider pro Rolle:
   "roles": [
     {
       "id": "architect",
-      "file": "developer_roles/architect.json",
+      "file": "developer_agents/architect.json",
       "instances": 1,
       "cli_provider": "claude",
       "model": "sonnet",
@@ -124,12 +124,12 @@ Definiere den CLI-Provider pro Rolle:
     },
     {
       "id": "implementer",
-      "file": "developer_roles/implementer.json",
+      "file": "developer_agents/implementer.json",
       "cli_provider": "codex"
     },
     {
       "id": "tester",
-      "file": "developer_roles/tester.json",
+      "file": "developer_agents/tester.json",
       "cli_provider": "gemini",
       "model": "gemini-2.5-flash",
       "cli_parameters": {
@@ -363,7 +363,7 @@ Das System wählt CLI-Provider in dieser Reihenfolge:
 ValueError: Unknown CLI provider: claude
 ```
 
-**Lösung**: Stelle sicher, dass `config/cli_config.json` existiert und den Provider definiert.
+**Lösung**: Stelle sicher, dass `agent_families/cli_config.json` existiert und den Provider definiert.
 
 ### CLI Command not found
 
@@ -420,7 +420,7 @@ Siehe `cli_config.json` für verfügbare Parameter.
 ```json
 {
   "id": "architect",
-  "file": "developer_roles/architect.json",
+  "file": "developer_agents/architect.json",
   "codex_cmd": "/path/to/claude -p"
 }
 ```
@@ -430,7 +430,7 @@ Siehe `cli_config.json` für verfügbare Parameter.
 ```json
 {
   "id": "architect",
-  "file": "developer_roles/architect.json",
+  "file": "developer_agents/architect.json",
   "cli_provider": "claude",
   "model": "sonnet",
   "cli_parameters": {
@@ -444,8 +444,8 @@ Siehe `cli_config.json` für verfügbare Parameter.
 ## Beispiele
 
 Siehe:
-- [`examples/multi_cli_example.json`](../examples/multi_cli_example.json) - Vollständiges Beispiel
-- [`config/cli_config.json`](../config/cli_config.json) - Provider-Definitionen
+- [`agent_families/multi_cli_example.json`](../agent_families/multi_cli_example.json) - Vollständiges Beispiel
+- [`static_config/cli_config.json`](../static_config/cli_config.json) - Provider-Definitionen
 
 ## Weiterführende Links
 

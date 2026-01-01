@@ -60,7 +60,7 @@ python creators/multi_family_creator.py \
 **Was passiert:**
 1. Codex generiert Familie-Struktur aus deiner Beschreibung
 2. Alle Rollen werden automatisch erstellt (mit Prompts, Dependencies, etc.)
-3. Dateien werden geschrieben: `config/ml_team_main.json` + `config/ml_team_roles/*.json`
+3. Dateien werden geschrieben: `agent_families/ml_team_main.json` + `agent_families/ml_team_agents/*.json`
 4. **Fertig!** Familie ist sofort nutzbar
 
 **Beispiele:**
@@ -95,17 +95,17 @@ Die einfachste Methode - nutze eine vorhandene Config:
 ```bash
 # Developer-Familie (Standard)
 python -m multi_agent.cli \
-  --config config/developer_main.json \
+  --config agent_families/developer_main.json \
   --task "Implementiere User-Login mit JWT"
 
 # Designer-Familie
 python -m multi_agent.cli \
-  --config config/designer_main.json \
+  --config agent_families/designer_main.json \
   --task "Entwirf ein Dashboard UI"
 
 # QA-Familie
 python -m multi_agent.cli \
-  --config config/qa_main.json \
+  --config agent_families/qa_main.json \
   --task "Erstelle Testplan für Login-Feature"
 ```
 
@@ -121,13 +121,13 @@ Kopiere eine existierende Config, die deiner Anforderung am nächsten kommt:
 
 ```bash
 # Für Code-Tasks: Developer als Basis
-cp config/developer_main.json config/my_project_main.json
+cp agent_families/developer_main.json agent_families/my_project_main.json
 
 # Für Design-Tasks: Designer als Basis
-cp config/designer_main.json config/my_design_main.json
+cp agent_families/designer_main.json agent_families/my_design_main.json
 
 # Für Dokumentation: Docs als Basis
-cp config/docs_main.json config/my_docs_main.json
+cp agent_families/docs_main.json agent_families/my_docs_main.json
 ```
 
 ### Schritt 2: Anpassen
@@ -141,12 +141,12 @@ cp config/docs_main.json config/my_docs_main.json
   "roles": [
     {
       "id": "architect",
-      "file": "developer_roles/architect.json",
+      "file": "developer_agents/architect.json",
       "instances": 1
     },
     {
       "id": "implementer",
-      "file": "developer_roles/implementer.json",
+      "file": "developer_agents/implementer.json",
       "instances": 1,
       "depends_on": ["architect"],
       "apply_diff": true
@@ -157,8 +157,8 @@ cp config/docs_main.json config/my_docs_main.json
   },
   "diff_safety": {
     "allowlist": [
-      "config/my_project_main.json",
-      "config/my_project_roles/*"
+      "agent_families/my_project_main.json",
+      "agent_families/my_project_agents/*"
     ]
   }
 }
@@ -172,13 +172,13 @@ cp config/docs_main.json config/my_docs_main.json
 4. **`diff_safety.allowlist`** - Erlaubte Pfade für Diff-Anwendung
 5. **`instances`** - Anzahl paralleler Instanzen pro Rolle
 
-**Hinweis:** Alle anderen Werte (system_rules, codex, limits, messages, etc.) werden automatisch aus `config/defaults.json` geladen. Falls du diese anpassen willst, kannst du sie in deiner Family-Config überschreiben.
+**Hinweis:** Alle anderen Werte (system_rules, codex, limits, messages, etc.) werden automatisch aus `agent_families/defaults.json` geladen. Falls du diese anpassen willst, kannst du sie in deiner Family-Config überschreiben.
 
 ### Schritt 3: Testen
 
 ```bash
 python -m multi_agent.cli \
-  --config config/my_project_main.json \
+  --config agent_families/my_project_main.json \
   --task "Teste die neue Config" \
   --validate-config
 ```
@@ -189,7 +189,7 @@ Der `--validate-config` Flag prüft die Config auf Fehler und bricht ab, ohne Ag
 
 ```bash
 python -m multi_agent.cli \
-  --config config/my_project_main.json \
+  --config agent_families/my_project_main.json \
   --task "@tasks/my_task.md" \
   --apply
 ```
@@ -203,7 +203,7 @@ Wenn du ganz von vorne anfangen willst, nutze das Minimal-Template:
 ### Schritt 1: Template kopieren
 
 ```bash
-cp examples/minimal_template.json config/my_minimal_main.json
+cp examples/minimal_template.json agent_families/my_minimal_main.json
 ```
 
 ### Schritt 2: Verstehen
@@ -217,7 +217,7 @@ Das Minimal-Template enthält nur das Nötigste:
   "roles": [
     {
       "id": "implementer",
-      "file": "developer_roles/implementer.json",
+      "file": "developer_agents/implementer.json",
       "instances": 1,
       "apply_diff": true
     }
@@ -243,19 +243,19 @@ Füge nach Bedarf weitere Rollen hinzu:
   "roles": [
     {
       "id": "architect",
-      "file": "developer_roles/architect.json",
+      "file": "developer_agents/architect.json",
       "instances": 1
     },
     {
       "id": "implementer",
-      "file": "developer_roles/implementer.json",
+      "file": "developer_agents/implementer.json",
       "instances": 1,
       "depends_on": ["architect"],  // ← Läuft nach architect
       "apply_diff": true
     },
     {
       "id": "tester",
-      "file": "developer_roles/tester.json",
+      "file": "developer_agents/tester.json",
       "instances": 1,
       "depends_on": ["implementer"]  // ← Läuft nach implementer
     }
@@ -274,7 +274,7 @@ Füge nach Bedarf weitere Rollen hinzu:
   "roles": [
     {
       "id": "implementer",
-      "file": "developer_roles/implementer.json",
+      "file": "developer_agents/implementer.json",
       "instances": 3,  // ← 3 parallele Instanzen
       "shard_mode": "headings",  // ← Task wird aufgeteilt
       "apply_diff": true
@@ -295,7 +295,7 @@ Du brauchst nicht immer alle Rollen:
     // "architect" auskommentiert oder gelöscht
     {
       "id": "implementer",
-      "file": "developer_roles/implementer.json",
+      "file": "developer_agents/implementer.json",
       "depends_on": []  // ← Keine Dependencies mehr
     }
     // "tester", "reviewer" weggelassen
@@ -349,7 +349,7 @@ Du brauchst nicht immer alle Rollen:
 
 ```bash
 python -m multi_agent.cli \
-  --config config/my_config.json \
+  --config agent_families/my_config.json \
   --task "Test" \
   --validate-config
 ```
@@ -358,7 +358,7 @@ python -m multi_agent.cli \
 
 1. **"Role file not found"**
    ```
-   Fehler: config/my_roles/foo.json nicht gefunden
+   Fehler: agent_families/my_agents/foo.json nicht gefunden
    Lösung: Prüfe den "file" Pfad in "roles" Array
    ```
 
@@ -378,7 +378,7 @@ python -m multi_agent.cli \
 
 ```bash
 python -m multi_agent.cli \
-  --config config/my_config.json \
+  --config agent_families/my_config.json \
   --task "Test"
   # Ohne --apply Flag!
 ```
@@ -439,7 +439,7 @@ Implementiere eine string_utils.py mit reverse() und capitalize().
 EOF
 
 # Teste mit verschiedenen Configs
-python -m multi_agent.cli --config config/developer_main.json --task "@tasks/test.md"
+python -m multi_agent.cli --config agent_families/developer_main.json --task "@tasks/test.md"
 python -m multi_agent.cli --config examples/sharding_basic_config.json --task "@tasks/test.md"
 ```
 

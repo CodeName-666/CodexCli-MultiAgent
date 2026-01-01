@@ -26,11 +26,11 @@ Die Konfiguration besteht aus zwei Teilen:
 2. **Rollen-Dateien** (`roles/<role>.json`) - Definieren einzelne Agent-Rollen
 
 ```
-config/
+agent_families/
 ├── developer_main.json          # Hauptkonfiguration
 ├── designer_main.json
 ├── docs_main.json
-└── developer_roles/             # Rollen-Definitionen
+└── developer_agents/             # Rollen-Definitionen
     ├── architect.json
     ├── implementer.json
     └── ...
@@ -47,7 +47,7 @@ config/
   "roles": [
     {
       "id": "implementer",
-      "file": "developer_roles/implementer.json"
+      "file": "developer_agents/implementer.json"
     }
   ]
 }
@@ -82,7 +82,7 @@ config/
   "roles": [
     {
       "id": "architect",
-      "file": "developer_roles/architect.json",
+      "file": "developer_agents/architect.json",
       "instances": 1,
       "timeout_sec": 1800,
       "depends_on": [],
@@ -90,7 +90,7 @@ config/
     },
     {
       "id": "implementer",
-      "file": "developer_roles/implementer.json",
+      "file": "developer_agents/implementer.json",
       "instances": 3,
       "timeout_sec": 3600,
       "depends_on": ["architect"],
@@ -124,7 +124,7 @@ config/
 ```json
 {
   "id": "implementer",
-  "file": "developer_roles/implementer.json",
+  "file": "developer_agents/implementer.json",
   "instances": 3,
   "timeout_sec": 3600,
   "depends_on": ["architect"],
@@ -433,17 +433,17 @@ python multi_agent_codex.py \
   "roles": [
     {
       "id": "architect",
-      "file": "developer_roles/architect.json"
+      "file": "developer_agents/architect.json"
     },
     {
       "id": "implementer",
-      "file": "developer_roles/implementer.json",
+      "file": "developer_agents/implementer.json",
       "depends_on": ["architect"],
       "apply_diff": true
     },
     {
       "id": "tester",
-      "file": "developer_roles/tester.json",
+      "file": "developer_agents/tester.json",
       "depends_on": ["implementer"]
     }
   ],
@@ -472,11 +472,11 @@ architect → implementer (applies diff) → tester
   "roles": [
     {
       "id": "architect",
-      "file": "developer_roles/architect.json"
+      "file": "developer_agents/architect.json"
     },
     {
       "id": "implementer",
-      "file": "developer_roles/implementer.json",
+      "file": "developer_agents/implementer.json",
       "instances": 3,
       "shard_mode": "headings",
       "overlap_policy": "forbid",
@@ -486,7 +486,7 @@ architect → implementer (applies diff) → tester
     },
     {
       "id": "reviewer",
-      "file": "developer_roles/reviewer.json",
+      "file": "developer_agents/reviewer.json",
       "instances": 2,
       "shard_mode": "none",
       "depends_on": ["implementer"]
@@ -515,13 +515,13 @@ reviewer (2 instances in ensemble mode)
   "roles": [
     {
       "id": "ui_designer",
-      "file": "designer_roles/ui_designer.json",
+      "file": "designer_agents/ui_designer.json",
       "instances": 2,
       "shard_mode": "headings"
     },
     {
       "id": "ui_implementer",
-      "file": "developer_roles/implementer.json",
+      "file": "developer_agents/implementer.json",
       "depends_on": ["ui_designer"],
       "instances": 2,
       "shard_mode": "headings",
@@ -529,7 +529,7 @@ reviewer (2 instances in ensemble mode)
     },
     {
       "id": "ux_reviewer",
-      "file": "designer_roles/ux_reviewer.json",
+      "file": "designer_agents/ux_reviewer.json",
       "depends_on": ["ui_implementer"]
     }
   ]
@@ -582,18 +582,18 @@ reviewer (2 instances in ensemble mode)
   "roles": [
     {
       "id": "architect",
-      "file": "developer_roles/architect.json",
+      "file": "developer_agents/architect.json",
       "timeout_sec": 1200
     },
     {
       "id": "implementer",
-      "file": "developer_roles/implementer.json",
+      "file": "developer_agents/implementer.json",
       "timeout_sec": 3600,
       "instances": 3
     },
     {
       "id": "tester",
-      "file": "developer_roles/tester.json",
+      "file": "developer_agents/tester.json",
       "timeout_sec": 2400
     }
   ]

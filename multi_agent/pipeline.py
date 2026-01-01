@@ -858,8 +858,8 @@ class Pipeline:
         if role_cfg.cli_provider and cfg.cli_providers:
             try:
                 # Initialize CLI adapter (lazy init, will create default if missing)
-                config_dir = Path(__file__).parent.parent / "config"
-                cli_config_path = config_dir / "cli_config.json"
+                static_config_dir = Path(__file__).parent.parent / "static_config"
+                cli_config_path = static_config_dir / "cli_config.json"
                 cli_adapter = CLIAdapter(cli_config_path)
 
                 # Build command using adapter

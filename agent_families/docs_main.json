@@ -5,14 +5,14 @@
   "final_role_id": "docs_integrator",
   "diff_safety": {
     "allowlist": [
-      "config/docs_main.json",
-      "config/docs_roles/*"
+      "agent_families/docs_main.json",
+      "agent_families/docs_agents/*"
     ]
   },
   "roles": [
     {
       "id": "tech_writer",
-      "file": "docs_roles/tech_writer.json",
+      "file": "docs_agents/tech_writer.json",
       "instances": 1,
       "depends_on": [],
       "expected_sections": [
@@ -23,11 +23,12 @@
         "```diff"
       ],
       "apply_diff": true,
-      "timeout_sec": 900
+      "timeout_sec": 900,
+      "cli_provider": "codex"
     },
     {
       "id": "tutorial_builder",
-      "file": "docs_roles/tutorial_builder.json",
+      "file": "docs_agents/tutorial_builder.json",
       "instances": 1,
       "depends_on": [
         "tech_writer"
@@ -40,11 +41,12 @@
         "```diff"
       ],
       "apply_diff": true,
-      "timeout_sec": 900
+      "timeout_sec": 900,
+      "cli_provider": "codex"
     },
     {
       "id": "docs_reviewer",
-      "file": "docs_roles/docs_reviewer.json",
+      "file": "docs_agents/docs_reviewer.json",
       "instances": 1,
       "depends_on": [
         "tutorial_builder"
@@ -54,11 +56,17 @@
         "- Findings:",
         "- Klarheit/Luecken:",
         "- Empfohlene Aenderungen:"
-      ]
+      ],
+      "cli_provider": "claude",
+      "model": "opus",
+      "cli_parameters": {
+        "max_turns": 2,
+        "append_system_prompt": "Fokus: Security, Performance, Maintainability"
+      }
     },
     {
       "id": "docs_integrator",
-      "file": "docs_roles/docs_integrator.json",
+      "file": "docs_agents/docs_integrator.json",
       "instances": 1,
       "depends_on": [
         "tech_writer",
@@ -69,7 +77,12 @@
         "# Final",
         "- Zusammenfassung:",
         "- Naechste Schritte:"
-      ]
+      ],
+      "cli_provider": "claude",
+      "model": "haiku",
+      "cli_parameters": {
+        "max_turns": 1
+      }
     }
   ]
 }
