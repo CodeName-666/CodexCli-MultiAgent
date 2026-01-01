@@ -37,6 +37,141 @@ from creators.multi_role_agent_creator import (
 from multi_agent.utils import get_codex_cmd, parse_cmd
 
 
+# ============================================================================
+# CLI Provider Configuration Utilities
+# ============================================================================
+
+# Provider recommendations (not automatically applied)
+PROVIDER_RECOMMENDATIONS = {
+    'architect': {
+        'cli_provider': 'claude',
+        'model': 'sonnet',
+        'cli_parameters': {
+            'max_turns': 3,
+            'allowed_tools': 'Read,Glob,Grep'
+        }
+    },
+    'designer': {
+        'cli_provider': 'codex',
+    },
+    'implementer': {
+        'cli_provider': 'codex',
+    },
+    'tester': {
+        'cli_provider': 'gemini',
+        'model': 'gemini-2.5-flash',
+        'cli_parameters': {
+            'temperature': 0.5
+        }
+    },
+    'reviewer': {
+        'cli_provider': 'claude',
+        'model': 'opus',
+        'cli_parameters': {
+            'max_turns': 2,
+            'append_system_prompt': 'Fokus: Security, Performance, Maintainability'
+        }
+    },
+    'integrator': {
+        'cli_provider': 'claude',
+        'model': 'haiku',
+        'cli_parameters': {
+            'max_turns': 1
+        }
+    }
+}
+
+
+def detect_role_type(role_id: str) -> str:
+    """Detect role type from role ID (for recommendations only)."""
+    role_id_lower = role_id.lower()
+
+    if 'architect' in role_id_lower:
+        return 'architect'
+    elif 'designer' in role_id_lower or 'implementer' in role_id_lower:
+        return 'implementer'
+    elif 'tester' in role_id_lower or 'test' in role_id_lower:
+        return 'tester'
+    elif 'reviewer' in role_id_lower or 'review' in role_id_lower:
+        return 'reviewer'
+    elif 'integrator' in role_id_lower or 'integration' in role_id_lower:
+        return 'integrator'
+    else:
+        return 'unknown'
+
+
+def get_recommendation_for_role(role_id: str) -> Dict | None:
+    """Get recommended CLI configuration for a role (optional)."""
+    role_type = detect_role_type(role_id)
+    return PROVIDER_RECOMMENDATIONS.get(role_type)
+
+
+def configure_provider_manually() -> Dict:
+    """Manually configure CLI provider (interactive)."""
+
+    # Select provider
+    print("\nAvailable Providers:")
+    print("  [1] codex (default)")
+    print("  [2] claude")
+    print("  [3] gemini")
+
+    provider_choice = input("Select provider (1-3): ").strip()
+    provider_map = {'1': 'codex', '2': 'claude', '3': 'gemini'}
+    provider = provider_map.get(provider_choice, 'codex')
+
+    config = {'cli_provider': provider}
+
+    # Select model (if Claude or Gemini)
+    model = None
+    if provider == 'claude':
+        print("\nClaude Models:")
+        print("  [1] sonnet (balanced)")
+        print("  [2] opus (highest quality)")
+        print("  [3] haiku (fast & cheap)")
+        model_choice = input("Select model (1-3): ").strip()
+        model_map = {'1': 'sonnet', '2': 'opus', '3': 'haiku'}
+        model = model_map.get(model_choice, 'sonnet')
+        config['model'] = model
+
+    elif provider == 'gemini':
+        print("\nGemini Models:")
+        print("  [1] gemini-2.5-flash (fast & cheap)")
+        print("  [2] gemini-2.5-pro (balanced)")
+        model_choice = input("Select model (1-2): ").strip()
+        model_map = {'1': 'gemini-2.5-flash', '2': 'gemini-2.5-pro'}
+        model = model_map.get(model_choice, 'gemini-2.5-flash')
+        config['model'] = model
+
+    # Parameters
+    add_params = input("\nAdd custom parameters? (y/N): ").strip().lower()
+    if add_params == 'y':
+        parameters = {}
+        print("Enter parameters (key=value, empty to finish):")
+        while True:
+            param = input("  > ").strip()
+            if not param:
+                break
+            if '=' in param:
+                key, value = param.split('=', 1)
+                # Try to parse as number
+                try:
+                    value = int(value)
+                except ValueError:
+                    try:
+                        value = float(value)
+                    except ValueError:
+                        pass  # Keep as string
+                parameters[key.strip()] = value
+
+        if parameters:
+            config['cli_parameters'] = parameters
+
+    return config
+
+
+# ============================================================================
+
+
 class FamilyValidationError(Exception):
     """Custom exception for family validation errors."""
     pass
@@ -472,6 +607,9 @@ class FamilyCreator:
         print("Generiere Prompt-Templates für Rollen...")
         family_spec = self._generate_prompt_templates(family_spec)
 
+        # PHASE 6.5: Configure CLI providers
+        family_spec = self._configure_cli_providers(family_spec)
+
         # PHASE 7: Write files
         print("Schreibe Familie-Konfiguration...")
         self._write_family_files(family_spec)
@@ -721,6 +859,97 @@ class FamilyCreator:
 
         return spec
 
+    def _configure_cli_providers(self, spec: Dict) -> Dict:
+        """
+        Optionally configure CLI providers for all roles.
+
+        Asks user if they want to configure CLI providers.
+        - If yes: Interactive configuration for each role
+        - If no: Set all roles to 'codex' (default)
+        """
+        print("\n" + "=" * 60)
+        print("CLI Provider Configuration")
+        print("=" * 60)
+        print("\nWould you like to configure CLI providers for the roles?")
+        print("  - codex (default): OpenAI Codex CLI")
+        print("  - claude: Anthropic Claude Code CLI")
+        print("  - gemini: Google Gemini CLI")
+        print("\nIf you skip this, all roles will use 'codex' as default.")
+
+        configure = input("\nConfigure CLI providers? (y/N): ").strip().lower()
+
+        if configure != 'y':
+            # Set all to codex (default)
+            print("[INFO] Skipping CLI provider configuration. All roles will use default (codex).")
+            for role in spec["roles"]:
+                role['cli_provider'] = 'codex'
+            return spec
+
+        # Interactive configuration for each role
+        print(f"\n{len(spec['roles'])} roles to configure.\n")
+
+        for role in spec["roles"]:
+            role_id = role['id']
+
+            # Show role info
+            print(f"\n{'=' * 60}")
+            print(f"Role: {role_id}")
+            print(f"Description: {role.get('description', 'N/A')[:80]}...")
+            print(f"{'=' * 60}")
+
+            # Show recommendation
+            recommendation = get_recommendation_for_role(role_id)
+            if recommendation:
+                rec_provider = recommendation.get('cli_provider', 'codex')
+                rec_model = recommendation.get('model', 'default')
+                rec_params = recommendation.get('cli_parameters', {})
+                rec_str = f"{rec_provider}"
+                if rec_model != 'default':
+                    rec_str += f"/{rec_model}"
+                if rec_params:
+                    param_strs = [f"{k}={v}" for k, v in rec_params.items()]
+                    rec_str += f" ({', '.join(param_strs)})"
+                print(f"Recommendation: {rec_str}")
+            else:
+                print(f"Recommendation: codex (default)")
+                recommendation = {'cli_provider': 'codex'}
+
+            # Options
+            print("\nOptions:")
+            print("  [1] Use codex (default)")
+            print("  [2] Configure manually")
+            if recommendation:
+                print("  [3] Use recommendation")
+
+            choice = input("\nSelect option (1-3): ").strip()
+
+            if choice == '1':
+                # Use codex
+                role['cli_provider'] = 'codex'
+                print("[OK] Using codex")
+
+            elif choice == '2':
+                # Configure manually
+                config = configure_provider_manually()
+                role.update(config)
+                print(f"[OK] Configured: {config}")
+
+            elif choice == '3' and recommendation:
+                # Use recommendation
+                role.update(recommendation)
+                print("[OK] Using recommendation")
+
+            else:
+                # Default to codex
+                role['cli_provider'] = 'codex'
+                print("[WARNING] Invalid choice, using default (codex)")
+
+        print(f"\n{'=' * 60}")
+        print("[OK] CLI provider configuration complete")
+        print(f"{'=' * 60}")
+
+        return spec
+
     def _write_family_files(self, spec: Dict) -> None:
         """
         Write all files (main.json + role JSONs).
@@ -770,6 +999,16 @@ class FamilyCreator:
 
             if role.get("timeout_sec"):
                 entry["timeout_sec"] = role["timeout_sec"]
+
+            # Add CLI provider configuration
+            if role.get("cli_provider"):
+                entry["cli_provider"] = role["cli_provider"]
+
+            if role.get("model"):
+                entry["model"] = role["model"]
+
+            if role.get("cli_parameters"):
+                entry["cli_parameters"] = role["cli_parameters"]
 
             role_entries.append(entry)
 

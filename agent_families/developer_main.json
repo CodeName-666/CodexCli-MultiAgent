@@ -28,12 +28,7 @@
         "- Risiken:",
         "- Plan"
       ],
-      "cli_provider": "claude",
-      "model": "sonnet",
-      "cli_parameters": {
-        "max_turns": 3,
-        "allowed_tools": "Read,Glob,Grep"
-      }
+      "cli_provider": "codex"
     },
     {
       "id": "implementer",
@@ -67,11 +62,7 @@
         "- Testfälle:",
         "```diff"
       ],
-      "cli_provider": "gemini",
-      "model": "gemini-2.5-flash",
-      "cli_parameters": {
-        "temperature": 0.5
-      }
+      "cli_provider": "codex"
     },
     {
       "id": "reviewer",
@@ -89,12 +80,7 @@
         "- Empfohlene Änderungen:",
         "```diff"
       ],
-      "cli_provider": "claude",
-      "model": "opus",
-      "cli_parameters": {
-        "max_turns": 2,
-        "append_system_prompt": "Fokus: Security, Performance, Maintainability"
-      }
+      "cli_provider": "codex"
     },
     {
       "id": "implementer_revision",
@@ -130,11 +116,7 @@
         "- Zusammenfassung:",
         "- Nächste Schritte:"
       ],
-      "cli_provider": "claude",
-      "model": "haiku",
-      "cli_parameters": {
-        "max_turns": 1
-      }
+      "cli_provider": "codex"
     }
   ]
 }

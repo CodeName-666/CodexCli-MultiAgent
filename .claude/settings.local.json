@@ -26,7 +26,8 @@
       "Bash(for file in *.md)",
       "Bash(do sed -i 's/config\\\\//agent_families\\\\//g; s/_roles\\\\//_agents\\\\//g; s/_roles:/_agents:/g; s/_roles\\)/_agents\\)/g' \"$file\")",
       "Bash(for file in *.json)",
-      "Bash(do sed -i 's/config\\\\//agent_families\\\\//g; s/_roles\\\\//_agents\\\\//g' \"$file\")"
+      "Bash(do sed -i 's/config\\\\//agent_families\\\\//g; s/_roles\\\\//_agents\\\\//g' \"$file\")",
+      "Bash(python creators/add_cli_providers.py:*)"
     ]
   }
 }
