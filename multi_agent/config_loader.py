@@ -4,8 +4,28 @@ from pathlib import Path
 from typing import Dict
 
 from .common_utils import load_json, deep_merge
+from .coordination import CoordinationConfig
 from .constants import get_static_config_dir
-from .models import AppConfig, RoleConfig
+from .models import (
+    AgentOutputConfig,
+    AppConfig,
+    CliConfig,
+    CliProvidersConfig,
+    DiffApplyConfig,
+    DiffMessageCatalog,
+    DiffSafetyConfig,
+    FeedbackLoopConfig,
+    LoggingConfig,
+    MessageCatalog,
+    OutputsConfig,
+    PathsConfig,
+    PromptLimitsConfig,
+    RoleConfig,
+    RoleDefaultsConfig,
+    SnapshotConfig,
+    TaskLimitsConfig,
+    TaskSplitConfig,
+)
 
 
 def _coerce_str_list(value: object) -> list[str]:
@@ -19,14 +39,14 @@ def _coerce_str_list(value: object) -> list[str]:
 def load_role_config(
     role_entry: Dict[str, object],
     base_dir: Path,
-    role_defaults: Dict[str, object],
+    role_defaults: RoleDefaultsConfig,
 ) -> RoleConfig:
     role_path = base_dir / str(role_entry["file"])
     data = load_json(role_path)
     role_id = str(role_entry.get("id") or data.get("id") or "")
     if not role_id:
         raise ValueError(f"Role file missing id: {role_path}")
-    defaults = role_defaults or {}
+    defaults = role_defaults
     timeout_sec = role_entry.get("timeout_sec", defaults.get("timeout_sec"))
     max_output_chars = role_entry.get("max_output_chars", defaults.get("max_output_chars"))
     max_prompt_chars = role_entry.get("max_prompt_chars", defaults.get("max_prompt_chars"))
@@ -107,13 +127,37 @@ def load_app_config(config_path: Path) -> AppConfig:
         cli_config = load_json(cli_config_path)
         cli_providers = cli_config.get("cli_providers", {})
 
-    role_defaults = data.get("role_defaults") or {}
-    roles = [load_role_config(role_entry, base_dir, role_defaults) for role_entry in data["roles"]]
+    role_defaults_data = data.get("role_defaults") or {}
+    role_defaults_cfg = RoleDefaultsConfig(dict(role_defaults_data or {}))
+    roles = [load_role_config(role_entry, base_dir, role_defaults_cfg) for role_entry in data["roles"]]
     final_role_id = str(data.get("final_role_id") or (roles[-1].id if roles else ""))
-    coordination = data.get("coordination") or {}
-    outputs = data.get("outputs") or {}
+    coordination_raw = data.get("coordination") or {}
+    outputs_raw = data.get("outputs") or {}
     task_limits = data.get("task_limits") or {}
     task_split = data.get("task_split") or {}
+
+    paths_cfg = PathsConfig.from_dict(data.get("paths") or {})
+    outputs_cfg = OutputsConfig.from_dict(outputs_raw)
+    snapshot_cfg = SnapshotConfig.from_dict(data.get("snapshot") or {})
+    agent_output_cfg = AgentOutputConfig.from_dict(data.get("agent_output") or {})
+    messages_cfg = MessageCatalog(dict(data.get("messages") or {}))
+    diff_messages_cfg = DiffMessageCatalog(dict(data.get("diff_messages") or {}))
+    cli_cfg = CliConfig.from_dict(data.get("cli") or {})
+    cli_providers_cfg = CliProvidersConfig(dict(cli_providers or {}))
+    prompt_limits_cfg = PromptLimitsConfig(dict(data.get("prompt_limits") or {}))
+    task_limits_cfg = TaskLimitsConfig(dict(task_limits or {}))
+    task_split_cfg = TaskSplitConfig(dict(task_split or {}))
+    diff_safety_cfg = DiffSafetyConfig(dict(data.get("diff_safety") or {}))
+    diff_apply_cfg = DiffApplyConfig(dict(data.get("diff_apply") or {}))
+    logging_cfg = LoggingConfig(dict(data.get("logging") or {}))
+    feedback_cfg = FeedbackLoopConfig(dict(data.get("feedback_loop") or {}))
+    coordination_cfg = CoordinationConfig(
+        task_board=str(coordination_raw.get("task_board") or ".multi_agent_runs/<run_id>/task_board.json"),
+        channel=str(coordination_raw.get("channel") or ".multi_agent_runs/<run_id>/coordination.log"),
+        lock_mode=str(coordination_raw.get("lock_mode") or "file_lock"),
+        claim_timeout_sec=int(coordination_raw.get("claim_timeout_sec", 300) or 300),
+        lock_timeout_sec=int(coordination_raw.get("lock_timeout_sec", 10) or 10),
+    )
 
     return AppConfig(
         system_rules=str(data["system_rules"]),
@@ -121,21 +165,21 @@ def load_app_config(config_path: Path) -> AppConfig:
         final_role_id=final_role_id,
         summary_max_chars=int(data.get("summary_max_chars", 1400)),
         final_summary_max_chars=int(data.get("final_summary_max_chars", 2400)),
-        paths=data["paths"],
-        coordination=coordination,
-        outputs=outputs,
-        snapshot=data["snapshot"],
-        agent_output=data["agent_output"],
-        messages=data["messages"],
-        diff_messages=data["diff_messages"],
-        cli=data["cli"],
-        cli_providers=cli_providers,
-        role_defaults=role_defaults,
-        prompt_limits=data.get("prompt_limits") or {},
-        task_limits=task_limits,
-        task_split=task_split,
-        diff_safety=data.get("diff_safety") or {},
-        diff_apply=data.get("diff_apply") or {},
-        logging=data.get("logging") or {},
-        feedback_loop=data.get("feedback_loop") or {},
+        paths=paths_cfg,
+        coordination=coordination_cfg,
+        outputs=outputs_cfg,
+        snapshot=snapshot_cfg,
+        agent_output=agent_output_cfg,
+        messages=messages_cfg,
+        diff_messages=diff_messages_cfg,
+        cli=cli_cfg,
+        cli_providers=cli_providers_cfg,
+        role_defaults=role_defaults_cfg,
+        prompt_limits=prompt_limits_cfg,
+        task_limits=task_limits_cfg,
+        task_split=task_split_cfg,
+        diff_safety=diff_safety_cfg,
+        diff_apply=diff_apply_cfg,
+        logging=logging_cfg,
+        feedback_loop=feedback_cfg,
     )

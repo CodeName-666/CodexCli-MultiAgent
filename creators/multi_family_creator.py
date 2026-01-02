@@ -521,6 +521,21 @@ Text may contain placeholders in curly braces (e.g., {{task}})."""
     return prompt
 
 
+def _has_cycle(node: str, graph: Dict[str, List[str]], visited: set[str], rec_stack: set[str]) -> bool:
+    visited.add(node)
+    rec_stack.add(node)
+
+    for neighbor in graph.get(node, []):
+        if neighbor not in visited:
+            if _has_cycle(neighbor, graph, visited, rec_stack):
+                return True
+        elif neighbor in rec_stack:
+            return True
+
+    rec_stack.remove(node)
+    return False
+
+
 def validate_dependencies(roles: List[Dict]) -> None:
     """
     Validate dependency graph (no cycles, all deps exist).
@@ -530,27 +545,11 @@ def validate_dependencies(roles: List[Dict]) -> None:
     # Build adjacency list
     graph = {role["id"]: role.get("depends_on", []) for role in roles}
 
-    # DFS for cycle detection
-    visited = set()
-    rec_stack = set()
-
-    def has_cycle(node):
-        visited.add(node)
-        rec_stack.add(node)
-
-        for neighbor in graph.get(node, []):
-            if neighbor not in visited:
-                if has_cycle(neighbor):
-                    return True
-            elif neighbor in rec_stack:
-                return True
-
-        rec_stack.remove(node)
-        return False
-
+    visited: set[str] = set()
+    rec_stack: set[str] = set()
     for role_id in graph:
         if role_id not in visited:
-            if has_cycle(role_id):
+            if _has_cycle(role_id, graph, visited, rec_stack):
                 raise FamilyValidationError(f"Dependency-Zyklus erkannt in Rolle: {role_id}")
 
     # Check if all dependencies exist

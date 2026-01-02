@@ -5,13 +5,14 @@ import asyncio
 import json
 import sys
 import time
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List
 
 from .cli_adapter import CLIAdapter
 from .constants import get_static_config_dir, DEFAULT_TOKEN_CHARS
 from .executor import AgentExecutor, CLIClient
-from .coordination import CoordinationConfig, CoordinationLog, TaskBoard
+from .coordination import CoordinationLog, TaskBoard
 from .diff_applier import BaseDiffApplier, UnifiedDiffApplier
 from .diff_utils import detect_file_overlaps, extract_touched_files_from_unified_diff, validate_touched_files_against_allowed_paths
 from .models import AgentResult, AgentSpec, AppConfig, RoleConfig, ShardPlan
@@ -33,6 +34,32 @@ from .utils import (
 )
 
 
+@dataclass
+class PipelineRunContext:
+    args: argparse.Namespace
+    cfg: AppConfig
+    workdir: Path
+    run_id: str
+    run_dir: Path
+    task_payload: Dict[str, object]
+    task_display: str
+    task_full: str
+    apply_role_ids: set[str]
+    reporter: ProgressReporter
+    report_lock: asyncio.Lock
+    context_lock: asyncio.Lock
+    apply_lock: asyncio.Lock
+    meta_lock: asyncio.Lock
+    run_meta: Dict[str, object]
+    json_logger: JsonRunLogger
+    context: Dict[str, str] = field(default_factory=dict)
+    results: Dict[str, List[AgentResult]] = field(default_factory=dict)
+    apply_log_lines: List[str] = field(default_factory=list)
+    task_board: TaskBoard | None = None
+    coordination_log: CoordinationLog | None = None
+    abort_run: bool = False
+
+
 class Pipeline:
     def __init__(
         self,
@@ -47,7 +74,7 @@ class Pipeline:
         workdir.mkdir(parents=True, exist_ok=True)
 
         run_id = run_id_override or now_stamp()
-        run_dir = workdir / str(cfg.paths["run_dir"]) / run_id
+        run_dir = workdir / str(cfg.paths.run_dir) / run_id
         run_dir.mkdir(parents=True, exist_ok=True)
 
         raw_task = (args.task or "").strip()
@@ -59,26 +86,86 @@ class Pipeline:
         except (FileNotFoundError, ValueError) as exc:
             print(str(exc), file=sys.stderr)
             return 2
-        task_display = task_payload["display"]
-        task_full = task_payload["full"]
 
-        apply_roles = [role for role in cfg.roles if role.apply_diff]
         try:
             apply_role_ids = self._resolve_apply_role_ids(args, cfg)
         except ValueError as exc:
             print(str(exc), file=sys.stderr)
             return 2
-        total_agents = sum(role.instances for role in cfg.roles)
-        apply_instances = sum(role.instances for role in apply_roles if role.id in apply_role_ids)
-        total_steps = 1 + total_agents + (apply_instances if args.apply else 0) + 1
-        reporter = ProgressReporter(total_steps=total_steps)
-        reporter.start(f"Workspace: {workdir} | Run-Ordner: {run_dir}")
+
+        reporter = self._build_reporter(args, cfg, apply_role_ids, workdir, run_dir)
         report_lock = asyncio.Lock()
         context_lock = asyncio.Lock()
         apply_lock = asyncio.Lock()
         meta_lock = asyncio.Lock()
 
-        run_meta: Dict[str, object] = {
+        run_meta = self._build_run_meta(
+            run_id=run_id,
+            workdir=workdir,
+            args=args,
+            task_payload=task_payload,
+            task_full=str(task_payload.get("full") or ""),
+            task_display=str(task_payload.get("display") or ""),
+        )
+        json_logger = self._build_json_logger(cfg, workdir, run_id, run_dir)
+        json_logger.log("run_start", {"run_id": run_id})
+
+        ctx = PipelineRunContext(
+            args=args,
+            cfg=cfg,
+            workdir=workdir,
+            run_id=run_id,
+            run_dir=run_dir,
+            task_payload=task_payload,
+            task_display=str(task_payload.get("display") or ""),
+            task_full=str(task_payload.get("full") or ""),
+            apply_role_ids=apply_role_ids,
+            reporter=reporter,
+            report_lock=report_lock,
+            context_lock=context_lock,
+            apply_lock=apply_lock,
+            meta_lock=meta_lock,
+            run_meta=run_meta,
+            json_logger=json_logger,
+        )
+
+        status = "ok"
+        error_detail = ""
+        try:
+            return await self._execute_run(ctx)
+        except Exception as exc:  # noqa: BLE001
+            status = "error"
+            error_detail = str(exc)
+            raise
+        finally:
+            self._finalize_run(ctx, status, error_detail)
+
+    def _build_reporter(
+        self,
+        args: argparse.Namespace,
+        cfg: AppConfig,
+        apply_role_ids: set[str],
+        workdir: Path,
+        run_dir: Path,
+    ) -> ProgressReporter:
+        apply_roles = [role for role in cfg.roles if role.apply_diff]
+        total_agents = sum(role.instances for role in cfg.roles)
+        apply_instances = sum(role.instances for role in apply_roles if role.id in apply_role_ids)
+        total_steps = 1 + total_agents + (apply_instances if args.apply else 0) + 1
+        reporter = ProgressReporter(total_steps=total_steps)
+        reporter.start(f"Workspace: {workdir} | Run-Ordner: {run_dir}")
+        return reporter
+
+    @staticmethod
+    def _build_run_meta(
+        run_id: str,
+        workdir: Path,
+        args: argparse.Namespace,
+        task_payload: Dict[str, object],
+        task_full: str,
+        task_display: str,
+    ) -> Dict[str, object]:
+        return {
             "run_id": run_id,
             "start_time": time.time(),
             "workspace": str(workdir),
@@ -86,424 +173,461 @@ class Pipeline:
             "roles": {},
             "snapshot": {},
             "task": {
-                "source": task_payload["source"],
+                "source": task_payload.get("source", ""),
                 "full_length": len(task_full),
                 "display_length": len(task_display),
-                "truncated": task_payload["truncated"],
-                "file_ref": task_payload["file_ref"],
+                "truncated": bool(task_payload.get("truncated", False)),
+                "file_ref": task_payload.get("file_ref", ""),
             },
         }
-        json_logger = self._build_json_logger(cfg, workdir, run_id, run_dir)
-        json_logger.log("run_start", {"run_id": run_id})
 
-        status = "ok"
-        error_detail = ""
-        try:
-            reporter.step("Snapshot", "Workspace wird gescannt", advance=1)
-            snapshot_result = self._snapshotter.build_snapshot(
-                workdir,
-                cfg.snapshot,
-                max_files=args.max_files,
-                max_bytes_per_file=args.max_file_bytes,
-                task=task_full,
-            )
-            snapshot_text = snapshot_result.text
-            write_text(run_dir / str(cfg.paths["snapshot_filename"]), snapshot_text)
-            reporter.step("Snapshot", "Snapshot gespeichert", advance=0)
+    async def _execute_run(self, ctx: PipelineRunContext) -> int:
+        snapshot_text = self._snapshot_workspace(ctx)
+        await self._initialize_coordination(ctx, snapshot_text)
+        await self._run_roles(ctx)
+        if ctx.args.apply and ctx.args.apply_mode == "end":
+            self._apply_end_diffs(ctx)
+        self._write_apply_log(ctx)
+        self._render_summary(ctx)
+        return self._final_exit_code(ctx)
 
-            run_meta["snapshot"] = {
-                "files_count": len(snapshot_result.files),
-                "cache_hit": snapshot_result.cache_hit,
-                "delta_used": snapshot_result.delta_used,
-                "max_bytes_per_file": snapshot_result.max_bytes_per_file,
-                "total_bytes": snapshot_result.total_bytes,
-            }
-            json_logger.log("snapshot", run_meta["snapshot"])
+    def _snapshot_workspace(self, ctx: PipelineRunContext) -> str:
+        ctx.reporter.step("Snapshot", "Workspace wird gescannt", advance=1)
+        snapshot_result = self._snapshotter.build_snapshot(
+            ctx.workdir,
+            ctx.cfg.snapshot,
+            max_files=ctx.args.max_files,
+            max_bytes_per_file=ctx.args.max_file_bytes,
+            task=ctx.task_full,
+        )
+        snapshot_text = snapshot_result.text
+        write_text(ctx.run_dir / str(ctx.cfg.paths.snapshot_filename), snapshot_text)
+        ctx.reporter.step("Snapshot", "Snapshot gespeichert", advance=0)
 
-            coordination_cfg = self._build_coordination_config(cfg.coordination)
-            task_board_path = self._resolve_coordination_path(
-                workdir, run_dir, coordination_cfg.task_board, run_id, default_name="task_board.json"
-            )
-            coordination_log_path = self._resolve_coordination_path(
-                workdir, run_dir, coordination_cfg.channel, run_id, default_name="coordination.log"
-            )
-            task_board = TaskBoard(
-                task_board_path,
-                lock_mode=coordination_cfg.lock_mode,
-                lock_timeout_sec=coordination_cfg.lock_timeout_sec,
-            )
-            coordination_log = CoordinationLog(coordination_log_path)
+        ctx.run_meta["snapshot"] = {
+            "files_count": len(snapshot_result.files),
+            "cache_hit": snapshot_result.cache_hit,
+            "delta_used": snapshot_result.delta_used,
+            "max_bytes_per_file": snapshot_result.max_bytes_per_file,
+            "total_bytes": snapshot_result.total_bytes,
+        }
+        ctx.json_logger.log("snapshot", ctx.run_meta["snapshot"])
+        return snapshot_text
 
-            context: Dict[str, str] = {
-                "task": task_display,
-                "task_full_path": task_payload["file_ref"],
-                "snapshot": snapshot_text,
-                "task_board_path": str(task_board_path),
-                "coordination_log_path": str(coordination_log_path),
-                "last_applied_diff": "",
-                "repair_note": "",
-            }
-            for role in cfg.roles:
-                context.setdefault(f"{role.id}_summary", "")
-                context.setdefault(f"{role.id}_output", "")
-            results: Dict[str, List[AgentResult]] = {}
-            apply_log_lines: List[str] = []
-            abort_run = False
+    async def _initialize_coordination(self, ctx: PipelineRunContext, snapshot_text: str) -> None:
+        coordination_cfg = ctx.cfg.coordination
+        task_board_path = self._resolve_coordination_path(
+            ctx.workdir, ctx.run_dir, coordination_cfg.task_board, ctx.run_id, default_name="task_board.json"
+        )
+        coordination_log_path = self._resolve_coordination_path(
+            ctx.workdir, ctx.run_dir, coordination_cfg.channel, ctx.run_id, default_name="coordination.log"
+        )
+        task_board = TaskBoard(
+            task_board_path,
+            lock_mode=coordination_cfg.lock_mode,
+            lock_timeout_sec=coordination_cfg.lock_timeout_sec,
+        )
+        coordination_log = CoordinationLog(coordination_log_path)
 
-            await task_board.initialize(self._build_task_board(cfg))
-            coordination_log.append("orchestrator", "init", {"run_id": run_id})
+        ctx.task_board = task_board
+        ctx.coordination_log = coordination_log
+        ctx.context = {
+            "task": ctx.task_display,
+            "task_full_path": str(ctx.task_payload.get("file_ref") or ""),
+            "snapshot": snapshot_text,
+            "task_board_path": str(task_board_path),
+            "coordination_log_path": str(coordination_log_path),
+            "last_applied_diff": "",
+            "repair_note": "",
+        }
+        for role in ctx.cfg.roles:
+            ctx.context.setdefault(f"{role.id}_summary", "")
+            ctx.context.setdefault(f"{role.id}_output", "")
 
-            pending_roles: Dict[str, RoleConfig] = {role.id: role for role in cfg.roles}
-            completed_roles: set[str] = set()
+        await task_board.initialize(self._build_task_board(ctx.cfg))
+        coordination_log.append("orchestrator", "init", {"run_id": ctx.run_id})
 
-            async def run_role(role_cfg: RoleConfig) -> str:
-                nonlocal abort_run
-                role_start = time.monotonic()
-                json_logger.log("role_start", {"role": role_cfg.id})
+    async def _run_roles(self, ctx: PipelineRunContext) -> None:
+        pending_roles: Dict[str, RoleConfig] = {role.id: role for role in ctx.cfg.roles}
+        completed_roles: set[str] = set()
 
-                # Create shard plan if sharding is enabled
-                shard_plan: ShardPlan | None = None
-                if role_cfg.shard_mode != "none" and role_cfg.instances > 1:
-                    async with context_lock:
-                        current_task = context.get("task", task_display)
-                    shard_plan = create_shard_plan(role_cfg, current_task)
-                    if shard_plan:
-                        # Save shard plan for debugging
-                        shard_plan_path = run_dir / f"{role_cfg.id}_shard_plan.json"
-                        save_shard_plan(shard_plan, shard_plan_path)
-                        json_logger.log("shard_plan_created", {
-                            "role": role_cfg.id,
-                            "shard_count": shard_plan.shard_count,
-                            "shard_mode": shard_plan.shard_mode,
-                        })
+        while pending_roles and not ctx.abort_run:
+            ready_roles = [
+                role
+                for role in pending_roles.values()
+                if all(dep in completed_roles for dep in self._effective_deps(ctx.cfg, role))
+            ]
+            if not ready_roles:
+                ctx.reporter.error("Abhaengigkeiten blockieren die Ausfuehrung (Zyklus?)")
+                break
+            tasks = [asyncio.create_task(self._run_role(ctx, role)) for role in ready_roles]
+            completed = await asyncio.gather(*tasks)
+            for role_id in completed:
+                completed_roles.add(role_id)
+                pending_roles.pop(role_id, None)
 
-                if role_cfg.run_if_review_critical:
-                    async with context_lock:
-                        reviewer_output = context.get("reviewer_output", "")
-                    if not self._review_has_critical(cfg.feedback_loop, reviewer_output):
-                        await self._mark_role_skipped(role_cfg, task_board, coordination_log)
-                        json_logger.log("role_skip", {"role": role_cfg.id, "reason": "no_critical_review"})
-                        async with meta_lock:
-                            run_meta["roles"][role_cfg.id] = {
-                                "instances_total": role_cfg.instances,
-                                "status": "skipped",
-                                "duration_sec": 0.0,
-                                "returncodes": [],
-                            }
-                        async with context_lock:
-                            context[f"{role_cfg.id}_summary"] = ""
-                            context[f"{role_cfg.id}_output"] = ""
-                        results[role_cfg.id] = []
-                        return role_cfg.id
-    
-                validation_context = dict(context)
-                validation_context["role_id"] = role_cfg.id
-                validation_context["role_name"] = role_cfg.name
-                validation_context["role_instance_id"] = "1"
-                validation_context["role_instance"] = f"{role_cfg.id}#1"
-                validation_context["repair_note"] = ""
-                try:
-                    _ = format_prompt(role_cfg.prompt_template, validation_context, role_cfg.id, cfg.messages)
-                except ValueError as exc:
-                    reporter.error(str(exc))
-                    print(str(exc), file=sys.stderr)
-                    abort_run = True
-                    return role_cfg.id
-    
-                role_results: List[AgentResult] = []
-                role_executor = self._build_executor(cfg, role_cfg, args.timeout)
-    
-                async def run_instance(instance_id: int) -> AgentResult:
-                    instance_label = f"{role_cfg.id}#{instance_id}"
-                    agent = AgentSpec(f"{role_cfg.name}#{instance_id}", role_cfg.role)
-                    async with context_lock:
-                        local_context = dict(context)
-                    local_context["role_id"] = role_cfg.id
-                    local_context["role_name"] = role_cfg.name
-                    local_context["role_instance_id"] = str(instance_id)
-                    local_context["role_instance"] = instance_label
+    async def _run_role(self, ctx: PipelineRunContext, role_cfg: RoleConfig) -> str:
+        if ctx.task_board is None or ctx.coordination_log is None:
+            raise RuntimeError("Coordination not initialized")
+        task_board = ctx.task_board
+        coordination_log = ctx.coordination_log
 
-                    # Use shard-specific task if sharding is enabled
-                    shard_index = instance_id - 1
-                    if shard_plan and shard_index < len(shard_plan.shards):
-                        shard = shard_plan.shards[shard_index]
-                        local_context["task"] = shard.content
-                        local_context["shard_id"] = shard.id
-                        local_context["shard_title"] = shard.title
-                        local_context["shard_goal"] = shard.goal
-                        local_context["allowed_paths"] = ", ".join(shard.allowed_paths)
-    
-                    prompt, prompt_chars, truncated, prompt_tokens, max_prompt_tokens = self._build_prompt(
-                        role_cfg,
-                        local_context,
-                        cfg,
-                    )
-                    out_file = run_dir / self._build_output_filename(cfg, role_cfg, instance_id)
-    
-                    await task_board.update_task(
-                        instance_label,
-                        {"status": "in_progress", "claimed_by": instance_label},
-                    )
-                    coordination_log.append(
-                        instance_label,
-                        "claim",
-                        {"task": instance_label, "out_file": str(out_file)},
-                    )
-    
-                    retries_left = max(0, role_cfg.retries)
-                    attempt = 0
-                    backoff_sec = float(cfg.role_defaults.get("retry_backoff_sec", 1.0))
-                    last_result: AgentResult | None = None
-    
-                    while True:
-                        async with report_lock:
-                            reporter.step("Agent-Lauf", f"Rolle: {instance_label}, attempt {attempt + 1}", advance=1)
-                        res = await role_executor.run_agent(
-                            agent,
-                            prompt,
-                            workdir,
-                            out_file,
-                        )
-                        last_result = res
-                        json_logger.log(
-                            "agent_result",
-                            {
-                                "role": role_cfg.id,
-                                "instance": instance_id,
-                                "returncode": res.returncode,
-                                "prompt_chars": prompt_chars,
-                                "prompt_tokens": prompt_tokens,
-                                "prompt_max_tokens": max_prompt_tokens or 0,
-                                "truncated": truncated,
-                                "stdout_chars": len(res.stdout),
-                                "stderr_chars": len(res.stderr),
-                            },
-                        )
-                        async with meta_lock:
-                            role_meta = run_meta["roles"].setdefault(role_cfg.id, {"instances": {}})
-                            role_meta["instances"][instance_label] = {
-                                "returncode": res.returncode,
-                                "prompt_chars": prompt_chars,
-                                "prompt_tokens": prompt_tokens,
-                                "prompt_max_tokens": max_prompt_tokens or 0,
-                                "stdout_chars": len(res.stdout),
-                                "stderr_chars": len(res.stderr),
-                                "attempts": role_cfg.retries + 1 - retries_left,
-                            }
-                        if self._output_ok(res, role_cfg):
-                            break
-                        if retries_left <= 0:
-                            break
-                        if not self._should_retry(res, role_cfg):
-                            break
-                        retries_left -= 1
-                        attempt += 1
-                        shrink = cfg.role_defaults.get("retry_prompt_shrink", 0.85)
-                        local_context = dict(local_context)
-                        prompt, prompt_chars, truncated, prompt_tokens, max_prompt_tokens = self._build_prompt(
-                            role_cfg,
-                            local_context,
-                            cfg,
-                            shrink_factor=float(shrink),
-                            repair_missing=self._repair_note(role_cfg, res.stdout),
-                        )
-                        await asyncio.sleep(backoff_sec)
-                    if last_result is None:
-                        raise RuntimeError("Agent did not run")
-                    await task_board.update_task(
-                        instance_label,
-                        {"status": "done", "claimed_by": instance_label, "returncode": last_result.returncode},
-                    )
-                    coordination_log.append(
-                        instance_label,
-                        "complete",
-                        {"task": instance_label, "returncode": last_result.returncode},
-                    )
-                    async with report_lock:
-                        reporter.step("Agent-Ende", f"Rolle: {instance_label}, rc={last_result.returncode}", advance=0)
-                    return last_result
-    
-                tasks = [asyncio.create_task(run_instance(idx)) for idx in range(1, role_cfg.instances + 1)]
-                role_results = await asyncio.gather(*tasks)
-                results[role_cfg.id] = role_results
+        role_start = time.monotonic()
+        ctx.json_logger.log("role_start", {"role": role_cfg.id})
 
-                # Stage Barrier: Validate shard outputs if sharding was enabled
-                if shard_plan:
-                    validation_ok, validation_msg = await self._validate_shard_results(
-                        role_cfg,
-                        shard_plan,
-                        role_results,
-                        run_dir,
-                        json_logger,
-                    )
-                    if not validation_ok:
-                        async with report_lock:
-                            reporter.error(f"Shard validation failed for {role_cfg.id}: {validation_msg}")
-                        if role_cfg.overlap_policy == "forbid":
-                            abort_run = True
-                        elif role_cfg.overlap_policy == "warn":
-                            async with report_lock:
-                                reporter.step("Warning", f"Overlaps detected in {role_cfg.id}", advance=0)
-
-                summary_text = self._combine_outputs(
-                    role_cfg,
-                    role_results,
-                    lambda text: summarize_text(normalize_output_text(text), max_chars=cfg.summary_max_chars),
+        shard_plan: ShardPlan | None = None
+        if role_cfg.shard_mode != "none" and role_cfg.instances > 1:
+            async with ctx.context_lock:
+                current_task = ctx.context.get("task", ctx.task_display)
+            shard_plan = create_shard_plan(role_cfg, current_task)
+            if shard_plan:
+                shard_plan_path = ctx.run_dir / f"{role_cfg.id}_shard_plan.json"
+                save_shard_plan(shard_plan, shard_plan_path)
+                ctx.json_logger.log(
+                    "shard_plan_created",
+                    {
+                        "role": role_cfg.id,
+                        "shard_count": shard_plan.shard_count,
+                        "shard_mode": shard_plan.shard_mode,
+                    },
                 )
-                output_text = self._combine_outputs(
-                    role_cfg,
-                    role_results,
-                    lambda text: normalize_output_text(text),
-                )
-    
-                async with context_lock:
-                    context[f"{role_cfg.id}_summary"] = summary_text
-                    context[f"{role_cfg.id}_output"] = output_text
-    
-                if args.apply and args.apply_mode == "role" and role_cfg.apply_diff and role_cfg.id in apply_role_ids:
-                    async with apply_lock:
-                        applied_ok, had_error, last_diff = await self._apply_role_diffs(
-                            args,
-                            cfg,
-                            workdir,
-                            role_cfg,
-                            role_results,
-                            reporter,
-                            apply_log_lines,
-                            confirm=args.apply_confirm,
-                        )
-                    if applied_ok:
-                        snapshot_result = self._snapshotter.build_snapshot(
-                            workdir,
-                            cfg.snapshot,
-                            max_files=args.max_files,
-                            max_bytes_per_file=args.max_file_bytes,
-                            task=task_full,
-                        )
-                        snapshot_name = f"snapshot_after_{role_cfg.id}.txt"
-                        write_text(run_dir / snapshot_name, snapshot_result.text)
-                        async with context_lock:
-                            context["snapshot"] = snapshot_result.text
-                            if last_diff:
-                                context["last_applied_diff"] = last_diff
-                    if args.fail_fast and had_error:
-                        abort_run = True
-    
-                role_end = time.monotonic()
-                async with meta_lock:
-                    role_meta = run_meta["roles"].setdefault(role_cfg.id, {"instances": {}})
-                    role_meta["instances_total"] = role_cfg.instances
-                    role_meta["duration_sec"] = role_end - role_start
-                    role_meta["returncodes"] = [res.returncode for res in role_results]
-                json_logger.log("role_end", {"role": role_cfg.id, "duration_sec": role_end - role_start})
+
+        if role_cfg.run_if_review_critical:
+            async with ctx.context_lock:
+                reviewer_output = ctx.context.get("reviewer_output", "")
+            if not self._review_has_critical(ctx.cfg.feedback_loop, reviewer_output):
+                await self._mark_role_skipped(role_cfg, task_board, coordination_log)
+                ctx.json_logger.log("role_skip", {"role": role_cfg.id, "reason": "no_critical_review"})
+                async with ctx.meta_lock:
+                    ctx.run_meta["roles"][role_cfg.id] = {
+                        "instances_total": role_cfg.instances,
+                        "status": "skipped",
+                        "duration_sec": 0.0,
+                        "returncodes": [],
+                    }
+                async with ctx.context_lock:
+                    ctx.context[f"{role_cfg.id}_summary"] = ""
+                    ctx.context[f"{role_cfg.id}_output"] = ""
+                ctx.results[role_cfg.id] = []
                 return role_cfg.id
-    
-            while pending_roles and not abort_run:
-                ready_roles = [
-                    role
-                    for role in pending_roles.values()
-                    if all(dep in completed_roles for dep in self._effective_deps(cfg, role))
-                ]
-                if not ready_roles:
-                    reporter.error("Abhaengigkeiten blockieren die Ausfuehrung (Zyklus?)")
-                    break
-                tasks = [asyncio.create_task(run_role(role)) for role in ready_roles]
-                completed = await asyncio.gather(*tasks)
-                for role_id in completed:
-                    completed_roles.add(role_id)
-                    pending_roles.pop(role_id, None)
 
-            if args.apply and args.apply_mode == "end":
-                for role_cfg in cfg.roles:
-                    if not role_cfg.apply_diff or role_cfg.id not in apply_role_ids:
-                        continue
-                    role_results = results.get(role_cfg.id, [])
-                    if not role_results:
-                        continue
-                    for res in role_results:
-                        label = res.agent.name
-                        reporter.step("Diff-Apply", f"Rolle: {label}", advance=1)
-                        diff = self._diff_applier.extract_diff(res.stdout)
-                        if not diff:
-                            reporter.step("Diff-Apply", f"Rolle: {label}, kein diff", advance=0)
-                            apply_log_lines.append(cfg.messages["apply_no_diff"].format(label=label))
-                            continue
-                        if args.apply_confirm and not self._confirm_diff(label, diff):
-                            apply_log_lines.append(cfg.messages["apply_skipped"].format(label=label))
-                            continue
-                        ok, msg = self._diff_applier.apply(
-                            workdir, diff, cfg.diff_messages, cfg.diff_safety, cfg.diff_apply
-                        )
-                        if ok:
-                            reporter.step("Diff-Apply", f"Rolle: {label}, ok", advance=0)
-                            apply_log_lines.append(cfg.messages["apply_ok"].format(label=label, message=msg))
-                        else:
-                            reporter.step("Diff-Apply", f"Rolle: {label}, fehler", advance=0)
-                            apply_log_lines.append(cfg.messages["apply_error"].format(label=label, message=msg))
-                            if args.fail_fast:
-                                reporter.error(f"Diff-Apply abgebrochen: {label}")
-                                break
-                write_text(run_dir / str(cfg.paths["apply_log_filename"]), "\n".join(apply_log_lines) + "\n")
-            elif args.apply and apply_log_lines:
-                write_text(run_dir / str(cfg.paths["apply_log_filename"]), "\n".join(apply_log_lines) + "\n")
+        validation_context = dict(ctx.context)
+        validation_context["role_id"] = role_cfg.id
+        validation_context["role_name"] = role_cfg.name
+        validation_context["role_instance_id"] = "1"
+        validation_context["role_instance"] = f"{role_cfg.id}#1"
+        validation_context["repair_note"] = ""
+        try:
+            _ = format_prompt(role_cfg.prompt_template, validation_context, role_cfg.id, ctx.cfg.messages)
+        except ValueError as exc:
+            ctx.reporter.error(str(exc))
+            print(str(exc), file=sys.stderr)
+            ctx.abort_run = True
+            return role_cfg.id
 
-            reporter.step("Summary", "Ausgaben werden zusammengefasst", advance=1)
-            print("\n" + cfg.messages["run_complete"])
-            print(cfg.messages["workspace_label"].format(workspace=workdir))
-            print(cfg.messages["run_dir_label"].format(run_dir=run_dir))
-            print("\n" + cfg.messages["status_header"])
-            for role_cfg in cfg.roles:
-                role_results = results.get(role_cfg.id, [])
-                if not role_results:
+        role_executor = self._build_executor(ctx.cfg, role_cfg, ctx.args.timeout)
+        tasks = [
+            asyncio.create_task(self._run_role_instance(ctx, role_cfg, idx, shard_plan, role_executor))
+            for idx in range(1, role_cfg.instances + 1)
+        ]
+        role_results = await asyncio.gather(*tasks)
+        ctx.results[role_cfg.id] = role_results
+
+        if shard_plan:
+            validation_ok, validation_msg = await self._validate_shard_results(
+                role_cfg,
+                shard_plan,
+                role_results,
+                ctx.run_dir,
+                ctx.json_logger,
+            )
+            if not validation_ok:
+                async with ctx.report_lock:
+                    ctx.reporter.error(f"Shard validation failed for {role_cfg.id}: {validation_msg}")
+                if role_cfg.overlap_policy == "forbid":
+                    ctx.abort_run = True
+                elif role_cfg.overlap_policy == "warn":
+                    async with ctx.report_lock:
+                        ctx.reporter.step("Warning", f"Overlaps detected in {role_cfg.id}", advance=0)
+
+        summary_text = self._combine_outputs(
+            role_cfg,
+            role_results,
+            lambda text: summarize_text(normalize_output_text(text), max_chars=ctx.cfg.summary_max_chars),
+        )
+        output_text = self._combine_outputs(
+            role_cfg,
+            role_results,
+            lambda text: normalize_output_text(text),
+        )
+
+        async with ctx.context_lock:
+            ctx.context[f"{role_cfg.id}_summary"] = summary_text
+            ctx.context[f"{role_cfg.id}_output"] = output_text
+
+        if (
+            ctx.args.apply
+            and ctx.args.apply_mode == "role"
+            and role_cfg.apply_diff
+            and role_cfg.id in ctx.apply_role_ids
+        ):
+            async with ctx.apply_lock:
+                applied_ok, had_error, last_diff = await self._apply_role_diffs(
+                    ctx.args,
+                    ctx.cfg,
+                    ctx.workdir,
+                    role_cfg,
+                    role_results,
+                    ctx.reporter,
+                    ctx.apply_log_lines,
+                    confirm=ctx.args.apply_confirm,
+                )
+            if applied_ok:
+                snapshot_result = self._snapshotter.build_snapshot(
+                    ctx.workdir,
+                    ctx.cfg.snapshot,
+                    max_files=ctx.args.max_files,
+                    max_bytes_per_file=ctx.args.max_file_bytes,
+                    task=ctx.task_full,
+                )
+                snapshot_name = f"snapshot_after_{role_cfg.id}.txt"
+                write_text(ctx.run_dir / snapshot_name, snapshot_result.text)
+                async with ctx.context_lock:
+                    ctx.context["snapshot"] = snapshot_result.text
+                    if last_diff:
+                        ctx.context["last_applied_diff"] = last_diff
+            if ctx.args.fail_fast and had_error:
+                ctx.abort_run = True
+
+        role_end = time.monotonic()
+        async with ctx.meta_lock:
+            role_meta = ctx.run_meta["roles"].setdefault(role_cfg.id, {"instances": {}})
+            role_meta["instances_total"] = role_cfg.instances
+            role_meta["duration_sec"] = role_end - role_start
+            role_meta["returncodes"] = [res.returncode for res in role_results]
+        ctx.json_logger.log("role_end", {"role": role_cfg.id, "duration_sec": role_end - role_start})
+        return role_cfg.id
+
+    async def _run_role_instance(
+        self,
+        ctx: PipelineRunContext,
+        role_cfg: RoleConfig,
+        instance_id: int,
+        shard_plan: ShardPlan | None,
+        role_executor: AgentExecutor,
+    ) -> AgentResult:
+        if ctx.task_board is None or ctx.coordination_log is None:
+            raise RuntimeError("Coordination not initialized")
+        task_board = ctx.task_board
+        coordination_log = ctx.coordination_log
+
+        instance_label = f"{role_cfg.id}#{instance_id}"
+        agent = AgentSpec(f"{role_cfg.name}#{instance_id}", role_cfg.role)
+        async with ctx.context_lock:
+            local_context = dict(ctx.context)
+        local_context["role_id"] = role_cfg.id
+        local_context["role_name"] = role_cfg.name
+        local_context["role_instance_id"] = str(instance_id)
+        local_context["role_instance"] = instance_label
+
+        shard_index = instance_id - 1
+        if shard_plan and shard_index < len(shard_plan.shards):
+            shard = shard_plan.shards[shard_index]
+            local_context["task"] = shard.content
+            local_context["shard_id"] = shard.id
+            local_context["shard_title"] = shard.title
+            local_context["shard_goal"] = shard.goal
+            local_context["allowed_paths"] = ", ".join(shard.allowed_paths)
+
+        prompt, prompt_chars, truncated, prompt_tokens, max_prompt_tokens = self._build_prompt(
+            role_cfg,
+            local_context,
+            ctx.cfg,
+        )
+        out_file = ctx.run_dir / self._build_output_filename(ctx.cfg, role_cfg, instance_id)
+
+        await task_board.update_task(
+            instance_label,
+            {"status": "in_progress", "claimed_by": instance_label},
+        )
+        coordination_log.append(
+            instance_label,
+            "claim",
+            {"task": instance_label, "out_file": str(out_file)},
+        )
+
+        retries_left = max(0, role_cfg.retries)
+        attempt = 0
+        backoff_sec = float(ctx.cfg.role_defaults.get("retry_backoff_sec", 1.0))
+        last_result: AgentResult | None = None
+
+        while True:
+            async with ctx.report_lock:
+                ctx.reporter.step("Agent-Lauf", f"Rolle: {instance_label}, attempt {attempt + 1}", advance=1)
+            res = await role_executor.run_agent(
+                agent,
+                prompt,
+                ctx.workdir,
+                out_file,
+            )
+            last_result = res
+            ctx.json_logger.log(
+                "agent_result",
+                {
+                    "role": role_cfg.id,
+                    "instance": instance_id,
+                    "returncode": res.returncode,
+                    "prompt_chars": prompt_chars,
+                    "prompt_tokens": prompt_tokens,
+                    "prompt_max_tokens": max_prompt_tokens or 0,
+                    "truncated": truncated,
+                    "stdout_chars": len(res.stdout),
+                    "stderr_chars": len(res.stderr),
+                },
+            )
+            async with ctx.meta_lock:
+                role_meta = ctx.run_meta["roles"].setdefault(role_cfg.id, {"instances": {}})
+                role_meta["instances"][instance_label] = {
+                    "returncode": res.returncode,
+                    "prompt_chars": prompt_chars,
+                    "prompt_tokens": prompt_tokens,
+                    "prompt_max_tokens": max_prompt_tokens or 0,
+                    "stdout_chars": len(res.stdout),
+                    "stderr_chars": len(res.stderr),
+                    "attempts": role_cfg.retries + 1 - retries_left,
+                }
+            if self._output_ok(res, role_cfg):
+                break
+            if retries_left <= 0:
+                break
+            if not self._should_retry(res, role_cfg):
+                break
+            retries_left -= 1
+            attempt += 1
+            shrink = ctx.cfg.role_defaults.get("retry_prompt_shrink", 0.85)
+            local_context = dict(local_context)
+            prompt, prompt_chars, truncated, prompt_tokens, max_prompt_tokens = self._build_prompt(
+                role_cfg,
+                local_context,
+                ctx.cfg,
+                shrink_factor=float(shrink),
+                repair_missing=self._repair_note(role_cfg, res.stdout),
+            )
+            await asyncio.sleep(backoff_sec)
+        if last_result is None:
+            raise RuntimeError("Agent did not run")
+        await task_board.update_task(
+            instance_label,
+            {"status": "done", "claimed_by": instance_label, "returncode": last_result.returncode},
+        )
+        coordination_log.append(
+            instance_label,
+            "complete",
+            {"task": instance_label, "returncode": last_result.returncode},
+        )
+        async with ctx.report_lock:
+            ctx.reporter.step("Agent-Ende", f"Rolle: {instance_label}, rc={last_result.returncode}", advance=0)
+        return last_result
+
+    def _apply_end_diffs(self, ctx: PipelineRunContext) -> None:
+        for role_cfg in ctx.cfg.roles:
+            if not role_cfg.apply_diff or role_cfg.id not in ctx.apply_role_ids:
+                continue
+            role_results = ctx.results.get(role_cfg.id, [])
+            if not role_results:
+                continue
+            for res in role_results:
+                label = res.agent.name
+                ctx.reporter.step("Diff-Apply", f"Rolle: {label}", advance=1)
+                diff = self._diff_applier.extract_diff(res.stdout)
+                if not diff:
+                    ctx.reporter.step("Diff-Apply", f"Rolle: {label}, kein diff", advance=0)
+                    ctx.apply_log_lines.append(ctx.cfg.messages["apply_no_diff"].format(label=label))
                     continue
-                for res in role_results:
-                    line = cfg.messages["status_line"].format(
-                        agent_name=res.agent.name,
-                        rc=res.returncode,
-                        status=get_status_text(res.returncode, res.stdout, cfg.messages),
-                        ok=res.ok,
-                        out_file=res.out_file.name,
-                    )
-                    print(line)
-                    if res.returncode != 0:
-                        reason = extract_error_reason(res.stdout, res.stderr)
-                        print(cfg.messages["status_reason"].format(reason=reason))
+                if ctx.args.apply_confirm and not self._confirm_diff(label, diff):
+                    ctx.apply_log_lines.append(ctx.cfg.messages["apply_skipped"].format(label=label))
+                    continue
+                ok, msg = self._diff_applier.apply(
+                    ctx.workdir, diff, ctx.cfg.diff_messages, ctx.cfg.diff_safety, ctx.cfg.diff_apply
+                )
+                if ok:
+                    ctx.reporter.step("Diff-Apply", f"Rolle: {label}, ok", advance=0)
+                    ctx.apply_log_lines.append(ctx.cfg.messages["apply_ok"].format(label=label, message=msg))
+                else:
+                    ctx.reporter.step("Diff-Apply", f"Rolle: {label}, fehler", advance=0)
+                    ctx.apply_log_lines.append(ctx.cfg.messages["apply_error"].format(label=label, message=msg))
+                    if ctx.args.fail_fast:
+                        ctx.reporter.error(f"Diff-Apply abgebrochen: {label}")
+                        break
 
-            if args.apply:
-                print("\n" + cfg.messages["patch_apply_header"])
-                for line in apply_log_lines:
-                    print("-", line)
+    def _write_apply_log(self, ctx: PipelineRunContext) -> None:
+        if ctx.args.apply and ctx.args.apply_mode == "end":
+            write_text(
+                ctx.run_dir / str(ctx.cfg.paths.apply_log_filename),
+                "\n".join(ctx.apply_log_lines) + "\n",
+            )
+        elif ctx.args.apply and ctx.apply_log_lines:
+            write_text(
+                ctx.run_dir / str(ctx.cfg.paths.apply_log_filename),
+                "\n".join(ctx.apply_log_lines) + "\n",
+            )
 
-            final_role_id = cfg.final_role_id or (cfg.roles[-1].id if cfg.roles else "")
-            final_results = results.get(final_role_id, [])
-            if final_results:
-                print("\n" + cfg.messages["integrator_output_header"] + "\n")
-                final_role_cfg = next((role for role in cfg.roles if role.id == final_role_id), None)
-                final_output = self._combine_outputs(final_role_cfg or final_role_id, final_results, lambda text: text)
-                final_summary = summarize_text(final_output, max_chars=cfg.final_summary_max_chars)
-                print(final_summary)
-                write_text(run_dir / "final_summary.txt", final_summary + "\n")
-                print("")
+    def _render_summary(self, ctx: PipelineRunContext) -> None:
+        ctx.reporter.step("Summary", "Ausgaben werden zusammengefasst", advance=1)
+        print("\n" + ctx.cfg.messages["run_complete"])
+        print(ctx.cfg.messages["workspace_label"].format(workspace=ctx.workdir))
+        print(ctx.cfg.messages["run_dir_label"].format(run_dir=ctx.run_dir))
+        print("\n" + ctx.cfg.messages["status_header"])
+        for role_cfg in ctx.cfg.roles:
+            role_results = ctx.results.get(role_cfg.id, [])
+            if not role_results:
+                continue
+            for res in role_results:
+                line = ctx.cfg.messages["status_line"].format(
+                    agent_name=res.agent.name,
+                    rc=res.returncode,
+                    status=get_status_text(res.returncode, res.stdout, ctx.cfg.messages),
+                    ok=res.ok,
+                    out_file=res.out_file.name,
+                )
+                print(line)
+                if res.returncode != 0:
+                    reason = extract_error_reason(res.stdout, res.stderr)
+                    print(ctx.cfg.messages["status_reason"].format(reason=reason))
 
-            if args.ignore_fail:
-                reporter.finish("Status ignoriert (ignore-fail)")
-                return 0
+        if ctx.args.apply:
+            print("\n" + ctx.cfg.messages["patch_apply_header"])
+            for line in ctx.apply_log_lines:
+                print("-", line)
 
-            any_fail = any(not res.ok for res_list in results.values() for res in res_list)
-            reporter.finish("Fertig")
-            return 1 if any_fail else 0
-        except Exception as exc:  # noqa: BLE001
-            status = "error"
-            error_detail = str(exc)
-            raise
-        finally:
-            run_meta["status"] = status
-            if error_detail:
-                run_meta["error"] = error_detail
-            run_meta["end_time"] = time.time()
-            run_meta["duration_sec"] = run_meta["end_time"] - run_meta["start_time"]
-            write_text(run_dir / "run.json", json.dumps(run_meta, indent=2, ensure_ascii=True) + "\n")
-            json_logger.log("run_end", {"run_id": run_id, "duration_sec": run_meta["duration_sec"]})
+        final_role_id = ctx.cfg.final_role_id or (ctx.cfg.roles[-1].id if ctx.cfg.roles else "")
+        final_results = ctx.results.get(final_role_id, [])
+        if final_results:
+            print("\n" + ctx.cfg.messages["integrator_output_header"] + "\n")
+            final_role_cfg = next((role for role in ctx.cfg.roles if role.id == final_role_id), None)
+            final_output = self._combine_outputs(final_role_cfg or final_role_id, final_results, lambda text: text)
+            final_summary = summarize_text(final_output, max_chars=ctx.cfg.final_summary_max_chars)
+            print(final_summary)
+            write_text(ctx.run_dir / "final_summary.txt", final_summary + "\n")
+            print("")
+
+    def _final_exit_code(self, ctx: PipelineRunContext) -> int:
+        if ctx.args.ignore_fail:
+            ctx.reporter.finish("Status ignoriert (ignore-fail)")
+            return 0
+        any_fail = any(not res.ok for res_list in ctx.results.values() for res in res_list)
+        ctx.reporter.finish("Fertig")
+        return 1 if any_fail else 0
+
+    @staticmethod
+    def _finalize_run(ctx: PipelineRunContext, status: str, error_detail: str) -> None:
+        ctx.run_meta["status"] = status
+        if error_detail:
+            ctx.run_meta["error"] = error_detail
+        ctx.run_meta["end_time"] = time.time()
+        ctx.run_meta["duration_sec"] = ctx.run_meta["end_time"] - ctx.run_meta["start_time"]
+        write_text(ctx.run_dir / "run.json", json.dumps(ctx.run_meta, indent=2, ensure_ascii=True) + "\n")
+        ctx.json_logger.log("run_end", {"run_id": ctx.run_id, "duration_sec": ctx.run_meta["duration_sec"]})
 
     @staticmethod
     def _combine_outputs(
@@ -525,16 +649,6 @@ class Pipeline:
         return "\n\n".join(blocks).strip()
 
     @staticmethod
-    def _build_coordination_config(raw: Dict[str, object]) -> CoordinationConfig:
-        return CoordinationConfig(
-            task_board=str(raw.get("task_board") or ""),
-            channel=str(raw.get("channel") or ""),
-            lock_mode=str(raw.get("lock_mode") or "file_lock"),
-            claim_timeout_sec=int(raw.get("claim_timeout_sec", 300)),
-            lock_timeout_sec=int(raw.get("lock_timeout_sec", 10)),
-        )
-
-    @staticmethod
     def _resolve_coordination_path(
         workdir: Path,
         run_dir: Path,
@@ -553,7 +667,7 @@ class Pipeline:
 
     @staticmethod
     def _build_output_filename(cfg: AppConfig, role_cfg, instance_id: int) -> str:
-        raw_pattern = str((cfg.outputs or {}).get("pattern") or "").strip()
+        raw_pattern = str(cfg.outputs.pattern or "").strip()
         if not raw_pattern:
             if role_cfg.instances > 1:
                 raw_pattern = "<role>_<instance>.md"
