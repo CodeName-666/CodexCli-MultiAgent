@@ -34,6 +34,7 @@ python multi_agent_codex.py create-role --nl-description "Ein Code Reviewer"
 
 - **[Quick Start Guide](docs/QUICKSTART.md)** ← **Starte hier!** Eigene Konfiguration in 5 Minuten
 - **[Multi-CLI Support](docs/MULTI_CLI.md)** ← **NEU!** Verschiedene CLI-Provider (Codex, Claude, Gemini) pro Rolle
+- **[Streaming Guide](docs/STREAMING.md)** - Live Output, Progress, Cancellation
 - **[Family Creator](docs/FAMILY_CREATOR.md)** ← Automatische Familie-Generierung via Natural Language
 - **[Vollständige Konfiguration](docs/CONFIGURATION.md)** - Referenz aller Config-Optionen
 - **[Eigene Rollen erstellen](docs/CUSTOM_ROLES.md)** - Custom Agent-Rollen schreiben
@@ -184,7 +185,7 @@ cd <repo>
 python multi_agent_codex.py --help
 ```
 
-Keine weiteren Dependencies nötig – nutzt nur Python Standard Library!
+Keine weiteren Dependencies noetig fuer den Basismodus. Fuer Live-Streaming optional: `rich` (und `tiktoken` fuer genaues Token-Counting).
 
 ---
 
@@ -520,6 +521,8 @@ python multi_agent_codex.py [OPTIONEN]
 | `--fail-fast` | Bei Fehler sofort abbrechen |
 | `--ignore-fail` | Exitcode immer 0 |
 | `--task-split` | Task in mehrere Runs aufteilen |
+| `--no-streaming` | Live-Streaming deaktivieren (fallback auf buffered) |
+| `--resume-run` | Abgebrochenen Run fortsetzen (run_id oder Pfad) |
 | `--max-files` | Max. Dateien im Snapshot |
 | `--max-file-bytes` | Max. Größe pro Datei im Snapshot |
 

@@ -11,12 +11,14 @@ from typing import Dict, List
 
 from .cli_adapter import CLIAdapter
 from .constants import get_static_config_dir, DEFAULT_TOKEN_CHARS
-from .executor import AgentExecutor, CLIClient
+from .cancellation import CancellationHandler
+from .executor import AgentExecutor, CLIClient, StreamingContext
 from .coordination import CoordinationLog, TaskBoard
 from .diff_applier import BaseDiffApplier, UnifiedDiffApplier
 from .diff_utils import detect_file_overlaps, extract_touched_files_from_unified_diff, validate_touched_files_against_allowed_paths
 from .models import AgentResult, AgentSpec, AppConfig, RoleConfig, ShardPlan
 from .progress import ProgressReporter
+from .progress_display import AgentProgressDisplay
 from .run_logger import JsonRunLogger
 from .sharding import create_shard_plan, save_shard_plan
 from .snapshot import BaseSnapshotter, WorkspaceSnapshotter
@@ -32,6 +34,7 @@ from .utils import (
     validate_output_sections,
     write_text,
 )
+from .streaming import build_token_counter
 
 
 @dataclass
@@ -58,6 +61,10 @@ class PipelineRunContext:
     task_board: TaskBoard | None = None
     coordination_log: CoordinationLog | None = None
     abort_run: bool = False
+    cancelled: bool = False
+    cancel_event: asyncio.Event | None = None
+    completed_roles: set[str] = field(default_factory=set)
+    resume_state: Dict[str, object] | None = None
 
 
 class Pipeline:
@@ -73,19 +80,37 @@ class Pipeline:
         workdir = Path(args.dir).resolve()
         workdir.mkdir(parents=True, exist_ok=True)
 
-        run_id = run_id_override or now_stamp()
-        run_dir = workdir / str(cfg.paths.run_dir) / run_id
-        run_dir.mkdir(parents=True, exist_ok=True)
+        resume_state: Dict[str, object] | None = None
+        resume_run = str(getattr(args, "resume_run", "") or "").strip()
+        if resume_run:
+            resume_dir = self._resolve_resume_dir(workdir, cfg, resume_run)
+            try:
+                resume_state = self._load_resume_state(resume_dir)
+            except (FileNotFoundError, ValueError) as exc:
+                print(str(exc), file=sys.stderr)
+                return 2
+            run_id = str(resume_state.get("run_id") or resume_dir.name)
+            run_dir = resume_dir
+        else:
+            run_id = run_id_override or now_stamp()
+            run_dir = workdir / str(cfg.paths.run_dir) / run_id
+            run_dir.mkdir(parents=True, exist_ok=True)
 
         raw_task = (args.task or "").strip()
-        if not raw_task:
-            print(cfg.messages["error_task_empty"], file=sys.stderr)
-            return 2
-        try:
-            task_payload = self._prepare_task(raw_task, workdir, run_dir, cfg.task_limits)
-        except (FileNotFoundError, ValueError) as exc:
-            print(str(exc), file=sys.stderr)
-            return 2
+        if resume_state is not None:
+            task_payload = dict(resume_state.get("task_payload") or {})
+            if not task_payload:
+                print("Fehler: Resume-Task-Payload fehlt.", file=sys.stderr)
+                return 2
+        else:
+            if not raw_task:
+                print(cfg.messages["error_task_empty"], file=sys.stderr)
+                return 2
+            try:
+                task_payload = self._prepare_task(raw_task, workdir, run_dir, cfg.task_limits)
+            except (FileNotFoundError, ValueError) as exc:
+                print(str(exc), file=sys.stderr)
+                return 2
 
         try:
             apply_role_ids = self._resolve_apply_role_ids(args, cfg)
@@ -107,9 +132,15 @@ class Pipeline:
             task_full=str(task_payload.get("full") or ""),
             task_display=str(task_payload.get("display") or ""),
         )
+        if resume_state is not None:
+            run_meta["resume"] = {
+                "run_id": run_id,
+                "run_dir": str(run_dir),
+            }
         json_logger = self._build_json_logger(cfg, workdir, run_id, run_dir)
         json_logger.log("run_start", {"run_id": run_id})
 
+        cancel_event = asyncio.Event()
         ctx = PipelineRunContext(
             args=args,
             cfg=cfg,
@@ -127,6 +158,9 @@ class Pipeline:
             meta_lock=meta_lock,
             run_meta=run_meta,
             json_logger=json_logger,
+            cancel_event=cancel_event,
+            completed_roles=set(resume_state.get("completed_roles", [])) if resume_state else set(),
+            resume_state=resume_state,
         )
 
         status = "ok"
@@ -182,8 +216,30 @@ class Pipeline:
         }
 
     async def _execute_run(self, ctx: PipelineRunContext) -> int:
-        snapshot_text = self._snapshot_workspace(ctx)
+        def on_cancel() -> None:
+            ctx.abort_run = True
+            ctx.cancelled = True
+            if ctx.cancel_event is not None:
+                ctx.cancel_event.set()
+
+        if self._streaming_runtime_enabled(ctx):
+            with CancellationHandler(on_cancel):
+                return await self._execute_run_inner(ctx)
+        return await self._execute_run_inner(ctx)
+
+    async def _execute_run_inner(self, ctx: PipelineRunContext) -> int:
+        if ctx.resume_state is not None:
+            snapshot_text = self._load_resume_snapshot(ctx)
+            ctx.run_meta["snapshot"] = {
+                "resumed": True,
+                "snapshot_file": str(ctx.cfg.paths.snapshot_filename),
+            }
+            ctx.json_logger.log("snapshot_resume", ctx.run_meta["snapshot"])
+        else:
+            snapshot_text = self._snapshot_workspace(ctx)
         await self._initialize_coordination(ctx, snapshot_text)
+        self._apply_resume_context(ctx)
+        self._write_resume_state(ctx)
         await self._run_roles(ctx)
         if ctx.args.apply and ctx.args.apply_mode == "end":
             self._apply_end_diffs(ctx)
@@ -248,8 +304,10 @@ class Pipeline:
         coordination_log.append("orchestrator", "init", {"run_id": ctx.run_id})
 
     async def _run_roles(self, ctx: PipelineRunContext) -> None:
-        pending_roles: Dict[str, RoleConfig] = {role.id: role for role in ctx.cfg.roles}
-        completed_roles: set[str] = set()
+        completed_roles: set[str] = set(ctx.completed_roles)
+        pending_roles: Dict[str, RoleConfig] = {
+            role.id: role for role in ctx.cfg.roles if role.id not in completed_roles
+        }
 
         while pending_roles and not ctx.abort_run:
             ready_roles = [
@@ -260,11 +318,18 @@ class Pipeline:
             if not ready_roles:
                 ctx.reporter.error("Abhaengigkeiten blockieren die Ausfuehrung (Zyklus?)")
                 break
-            tasks = [asyncio.create_task(self._run_role(ctx, role)) for role in ready_roles]
+            allow_rich = len(ready_roles) == 1
+            tasks = [
+                asyncio.create_task(self._run_role(ctx, role, allow_rich))
+                for role in ready_roles
+            ]
             completed = await asyncio.gather(*tasks)
-            for role_id in completed:
-                completed_roles.add(role_id)
+            for role_id, completed_ok in completed:
+                if completed_ok:
+                    completed_roles.add(role_id)
                 pending_roles.pop(role_id, None)
+            ctx.completed_roles = set(completed_roles)
+            self._write_resume_state(ctx)
 
     async def _setup_shard_plan(
         self, ctx: PipelineRunContext, role_cfg: RoleConfig
@@ -471,7 +536,12 @@ class Pipeline:
         async with ctx.report_lock:
             ctx.reporter.step("Agent-Ende", f"Rolle: {instance_label}, rc={result.returncode}", advance=0)
 
-    async def _run_role(self, ctx: PipelineRunContext, role_cfg: RoleConfig) -> str:
+    async def _run_role(
+        self,
+        ctx: PipelineRunContext,
+        role_cfg: RoleConfig,
+        allow_rich: bool,
+    ) -> tuple[str, bool]:
         """Execute a single role with all its instances."""
         if ctx.task_board is None or ctx.coordination_log is None:
             raise RuntimeError("Coordination not initialized")
@@ -486,20 +556,43 @@ class Pipeline:
 
         # Check if role should be skipped
         if await self._check_role_skip_condition(ctx, role_cfg, task_board, coordination_log):
-            return role_cfg.id
+            return role_cfg.id, True
 
         # Validate prompt template
         if not self._validate_role_prompt(ctx, role_cfg):
-            return role_cfg.id
+            return role_cfg.id, False
+
+        streaming_enabled, use_rich = self._resolve_streaming(ctx, role_cfg, allow_rich)
 
         # Execute all role instances in parallel
         role_executor = self._build_executor(ctx.cfg, role_cfg, ctx.args.timeout)
         tasks = [
-            asyncio.create_task(self._run_role_instance(ctx, role_cfg, idx, shard_plan, role_executor))
+            asyncio.create_task(
+                self._run_role_instance(
+                    ctx,
+                    role_cfg,
+                    idx,
+                    shard_plan,
+                    role_executor,
+                    streaming_enabled,
+                    use_rich,
+                )
+            )
             for idx in range(1, role_cfg.instances + 1)
         ]
         role_results = await asyncio.gather(*tasks)
         ctx.results[role_cfg.id] = role_results
+
+        role_cancelled = any(res.returncode == 130 for res in role_results)
+        if role_cancelled:
+            role_end = time.monotonic()
+            async with ctx.meta_lock:
+                role_meta = ctx.run_meta["roles"].setdefault(role_cfg.id, {"instances": {}})
+                role_meta["instances_total"] = role_cfg.instances
+                role_meta["duration_sec"] = role_end - role_start
+                role_meta["returncodes"] = [res.returncode for res in role_results]
+            ctx.json_logger.log("role_end", {"role": role_cfg.id, "duration_sec": role_end - role_start})
+            return role_cfg.id, False
 
         # Validate shard results if sharding was used
         if shard_plan:
@@ -532,7 +625,7 @@ class Pipeline:
             role_meta["duration_sec"] = role_end - role_start
             role_meta["returncodes"] = [res.returncode for res in role_results]
         ctx.json_logger.log("role_end", {"role": role_cfg.id, "duration_sec": role_end - role_start})
-        return role_cfg.id
+        return role_cfg.id, True
 
     async def _run_role_instance(
         self,
@@ -541,6 +634,8 @@ class Pipeline:
         instance_id: int,
         shard_plan: ShardPlan | None,
         role_executor: AgentExecutor,
+        streaming_enabled: bool,
+        use_rich: bool,
     ) -> AgentResult:
         """Execute a single instance of a role with retry logic."""
         if ctx.task_board is None or ctx.coordination_log is None:
@@ -576,7 +671,63 @@ class Pipeline:
                 ctx.reporter.step("Agent-Lauf", f"Rolle: {instance_label}, attempt {attempt + 1}", advance=1)
 
             # Run agent
-            res = await role_executor.run_agent(agent, prompt, ctx.workdir, out_file)
+            streaming_ctx = None
+            progress_display = None
+            if streaming_enabled and not ctx.cancelled:
+                streaming_cfg = ctx.cfg.streaming
+                refresh_rate = int(streaming_cfg.get("refresh_rate_hz", 4) or 4)
+                output_preview_lines = int(streaming_cfg.get("output_preview_lines", 10) or 10)
+                buffer_max_lines = int(streaming_cfg.get("buffer_max_lines", 1000) or 1000)
+                token_mode = str(streaming_cfg.get("token_counting", "heuristic") or "heuristic")
+                token_chars = int(ctx.cfg.prompt_limits.get("token_chars", DEFAULT_TOKEN_CHARS) or DEFAULT_TOKEN_CHARS)
+                expected_chars = role_cfg.max_output_chars or int(ctx.cfg.role_defaults.get("max_output_chars", 0) or 0)
+                expected_tokens = int(expected_chars / max(1, token_chars)) if expected_chars else 0
+                progress_display = AgentProgressDisplay(
+                    refresh_rate_hz=refresh_rate,
+                    output_preview_lines=output_preview_lines,
+                    buffer_max_lines=buffer_max_lines,
+                    expected_tokens=expected_tokens,
+                    stream_label=instance_label,
+                    force_plain=not use_rich,
+                )
+                progress_display.start_agent(agent.name)
+                if ctx.cancel_event is None:
+                    ctx.cancel_event = asyncio.Event()
+                cancel_event = ctx.cancel_event
+                token_counter = build_token_counter(token_mode, token_chars=token_chars, model=role_cfg.model)
+                streaming_ctx = StreamingContext(
+                    enabled=True,
+                    progress_display=progress_display,
+                    cancel_event=cancel_event,
+                    token_counter=token_counter,
+                )
+
+            if streaming_ctx and progress_display:
+                if progress_display.use_rich:
+                    from rich.live import Live
+
+                    with Live(
+                        progress_display,
+                        refresh_per_second=progress_display.refresh_rate_hz,
+                        console=progress_display.console,
+                    ):
+                        res = await role_executor.run_agent(
+                            agent,
+                            prompt,
+                            ctx.workdir,
+                            out_file,
+                            streaming=streaming_ctx,
+                        )
+                else:
+                    res = await role_executor.run_agent(
+                        agent,
+                        prompt,
+                        ctx.workdir,
+                        out_file,
+                        streaming=streaming_ctx,
+                    )
+            else:
+                res = await role_executor.run_agent(agent, prompt, ctx.workdir, out_file)
             last_result = res
 
             # Log result
@@ -607,6 +758,9 @@ class Pipeline:
                     "stderr_chars": len(res.stderr),
                     "attempts": role_cfg.retries + 1 - retries_left,
                 }
+
+            if ctx.abort_run or ctx.cancelled:
+                break
 
             # Check if result is acceptable
             if self._output_ok(res, role_cfg):
@@ -718,6 +872,9 @@ class Pipeline:
             print("")
 
     def _final_exit_code(self, ctx: PipelineRunContext) -> int:
+        if ctx.cancelled:
+            ctx.reporter.finish("Abgebrochen")
+            return 130
         if ctx.args.ignore_fail:
             ctx.reporter.finish("Status ignoriert (ignore-fail)")
             return 0
@@ -727,13 +884,17 @@ class Pipeline:
 
     @staticmethod
     def _finalize_run(ctx: PipelineRunContext, status: str, error_detail: str) -> None:
-        ctx.run_meta["status"] = status
+        status_value = status
+        if ctx.cancelled and status == "ok":
+            status_value = "cancelled"
+        ctx.run_meta["status"] = status_value
         if error_detail:
             ctx.run_meta["error"] = error_detail
         ctx.run_meta["end_time"] = time.time()
         ctx.run_meta["duration_sec"] = ctx.run_meta["end_time"] - ctx.run_meta["start_time"]
         write_text(ctx.run_dir / "run.json", json.dumps(ctx.run_meta, indent=2, ensure_ascii=True) + "\n")
         ctx.json_logger.log("run_end", {"run_id": ctx.run_id, "duration_sec": ctx.run_meta["duration_sec"]})
+        Pipeline._write_resume_state(ctx)
 
     @staticmethod
     def _combine_outputs(
@@ -753,6 +914,66 @@ class Pipeline:
                 content = truncate_text(content, max_output_chars)
             blocks.append(f"[{res.agent.name}]\n{content}")
         return "\n\n".join(blocks).strip()
+
+    @staticmethod
+    def _resume_state_path(run_dir: Path) -> Path:
+        return run_dir / "resume.json"
+
+    @staticmethod
+    def _resolve_resume_dir(workdir: Path, cfg: AppConfig, resume_run: str) -> Path:
+        resume_path = Path(resume_run)
+        if resume_path.exists() and resume_path.is_dir():
+            return resume_path
+        return workdir / str(cfg.paths.run_dir) / resume_run
+
+    @staticmethod
+    def _load_resume_state(run_dir: Path) -> Dict[str, object]:
+        state_path = Pipeline._resume_state_path(run_dir)
+        if not state_path.exists():
+            raise FileNotFoundError(f"Fehler: Resume-State nicht gefunden: {state_path}")
+        raw = state_path.read_text(encoding="utf-8")
+        data = json.loads(raw)
+        if not isinstance(data, dict):
+            raise ValueError("Fehler: Resume-State ist ungueltig.")
+        return data
+
+    @staticmethod
+    def _write_resume_state(ctx: PipelineRunContext) -> None:
+        context = {
+            key: value
+            for key, value in ctx.context.items()
+            if key.endswith("_summary") or key.endswith("_output") or key in {"last_applied_diff"}
+        }
+        all_roles = {role.id for role in ctx.cfg.roles}
+        done = all_roles.issubset(ctx.completed_roles)
+        status = "cancelled" if ctx.cancelled else "complete" if done else "in_progress"
+        payload = {
+            "run_id": ctx.run_id,
+            "run_dir": str(ctx.run_dir),
+            "config": str(getattr(ctx.args, "config", "")),
+            "task_payload": ctx.task_payload,
+            "completed_roles": sorted(ctx.completed_roles),
+            "context": context,
+            "status": status,
+            "updated_at": time.time(),
+        }
+        write_text(Pipeline._resume_state_path(ctx.run_dir), json.dumps(payload, indent=2, ensure_ascii=True) + "\n")
+
+    @staticmethod
+    def _load_resume_snapshot(ctx: PipelineRunContext) -> str:
+        snapshot_path = ctx.run_dir / str(ctx.cfg.paths.snapshot_filename)
+        if not snapshot_path.exists():
+            raise FileNotFoundError(f"Fehler: Snapshot fehlt: {snapshot_path}")
+        return snapshot_path.read_text(encoding="utf-8")
+
+    @staticmethod
+    def _apply_resume_context(ctx: PipelineRunContext) -> None:
+        if not ctx.resume_state:
+            return
+        resume_context = ctx.resume_state.get("context") or {}
+        if isinstance(resume_context, dict):
+            for key, value in resume_context.items():
+                ctx.context[str(key)] = str(value)
 
     @staticmethod
     def _resolve_coordination_path(
@@ -1084,6 +1305,28 @@ class Pipeline:
 
         client = CLIClient(cmd, timeout_sec=adjusted_timeout, stdin_mode=stdin_mode)
         return AgentExecutor(client, cfg.agent_output, cfg.messages)
+
+    @staticmethod
+    def _streaming_runtime_enabled(ctx: PipelineRunContext) -> bool:
+        if getattr(ctx.args, "no_streaming", False):
+            return False
+        streaming_cfg = ctx.cfg.streaming
+        if not bool(streaming_cfg.get("enabled", True)):
+            return False
+        if not sys.stdout.isatty():
+            return False
+        return True
+
+    @staticmethod
+    def _resolve_streaming(
+        ctx: PipelineRunContext,
+        role_cfg: RoleConfig,
+        allow_rich: bool,
+    ) -> tuple[bool, bool]:
+        if not Pipeline._streaming_runtime_enabled(ctx):
+            return False, False
+        use_rich = bool(allow_rich and role_cfg.instances == 1)
+        return True, use_rich
 
     @staticmethod
     def _review_has_critical(feedback_cfg: Dict[str, object], reviewer_output: str) -> bool:

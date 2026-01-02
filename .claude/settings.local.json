@@ -32,7 +32,8 @@
       "Bash(ls -la \"d:\\\\Projekte\\\\Python\\\\Codex_CLI_Agent\\\\multi_agent\"\" | grep \".py \")",
       "Bash(del \"d:\\\\Projekte\\\\Python\\\\Codex_CLI_Agent\\\\multi_agent\\\\codex.py\")",
       "Bash(cat:*)",
-      "Bash(python -m py_compile:*)"
+      "Bash(python -m py_compile:*)",
+      "Bash(tree:*)"
     ]
   }
 }

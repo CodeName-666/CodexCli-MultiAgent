@@ -190,6 +190,11 @@ class TaskSplitConfig(MappingConfig):
 
 
 @dataclasses.dataclass(frozen=True)
+class StreamingConfig(MappingConfig):
+    pass
+
+
+@dataclasses.dataclass(frozen=True)
 class DiffSafetyConfig(MappingConfig):
     pass
 
@@ -282,6 +287,7 @@ class AppConfig:
     prompt_limits: PromptLimitsConfig
     task_limits: TaskLimitsConfig
     task_split: TaskSplitConfig
+    streaming: StreamingConfig
 
     # Safety & Logging
     diff_safety: DiffSafetyConfig

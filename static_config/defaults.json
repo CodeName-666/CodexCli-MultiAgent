@@ -44,6 +44,13 @@
     "manifest_filename": "task_split.json",
     "carry_over_filename": "carry_over.md"
   },
+  "streaming": {
+    "enabled": true,
+    "refresh_rate_hz": 4,
+    "output_preview_lines": 10,
+    "buffer_max_lines": 1000,
+    "token_counting": "heuristic"
+  },
   "paths": {
     "run_dir": ".multi_agent_runs",
     "snapshot_filename": "snapshot.txt",
@@ -209,6 +216,12 @@
       },
       "no_task_resume": {
         "help": "Deaktiviert Resume fuer Task-Splitting (neu aufsetzen)."
+      },
+      "no_streaming": {
+        "help": "Disable real-time output streaming."
+      },
+      "resume_run": {
+        "help": "Resume a cancelled run (run_id or path)."
       },
       "max_files": {
         "help": "Max Dateien im Snapshot."

@@ -23,6 +23,7 @@ from .models import (
     RoleConfig,
     RoleDefaultsConfig,
     SnapshotConfig,
+    StreamingConfig,
     TaskLimitsConfig,
     TaskSplitConfig,
 )
@@ -135,6 +136,7 @@ def load_app_config(config_path: Path) -> AppConfig:
     outputs_raw = data.get("outputs") or {}
     task_limits = data.get("task_limits") or {}
     task_split = data.get("task_split") or {}
+    streaming = data.get("streaming") or {}
 
     paths_cfg = PathsConfig.from_dict(data.get("paths") or {})
     outputs_cfg = OutputsConfig.from_dict(outputs_raw)
@@ -147,6 +149,7 @@ def load_app_config(config_path: Path) -> AppConfig:
     prompt_limits_cfg = PromptLimitsConfig(dict(data.get("prompt_limits") or {}))
     task_limits_cfg = TaskLimitsConfig(dict(task_limits or {}))
     task_split_cfg = TaskSplitConfig(dict(task_split or {}))
+    streaming_cfg = StreamingConfig(dict(streaming or {}))
     diff_safety_cfg = DiffSafetyConfig(dict(data.get("diff_safety") or {}))
     diff_apply_cfg = DiffApplyConfig(dict(data.get("diff_apply") or {}))
     logging_cfg = LoggingConfig(dict(data.get("logging") or {}))
@@ -178,6 +181,7 @@ def load_app_config(config_path: Path) -> AppConfig:
         prompt_limits=prompt_limits_cfg,
         task_limits=task_limits_cfg,
         task_split=task_split_cfg,
+        streaming=streaming_cfg,
         diff_safety=diff_safety_cfg,
         diff_apply=diff_apply_cfg,
         logging=logging_cfg,

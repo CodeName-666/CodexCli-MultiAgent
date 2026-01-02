@@ -7,11 +7,26 @@ from __future__ import annotations
 
 import asyncio
 import sys
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Callable, Dict, List, Protocol, Tuple
 
 from .models import AgentResult, AgentSpec
+from .streaming import StreamCancelled, StreamTimeout, StreamingClient
 from .utils import get_status_text, write_text
+
+
+class ProgressDisplay(Protocol):
+    def update(self, chunk: str, tokens: int, elapsed: float) -> None:
+        ...
+
+
+@dataclass
+class StreamingContext:
+    enabled: bool
+    progress_display: ProgressDisplay | None = None
+    cancel_event: asyncio.Event | None = None
+    token_counter: Callable[[str], int] | None = None
 
 
 class CLIClient:
@@ -79,6 +94,55 @@ class CLIClient:
             stdout_b, stderr_b = await proc.communicate()
             return 124, stdout_b.decode("utf-8", "replace"), (stderr_b.decode("utf-8", "replace") + "\nTIMEOUT")
 
+    async def run_streaming(
+        self,
+        prompt: str | None,
+        workdir: Path,
+        progress_display: ProgressDisplay | None = None,
+        cancel_event: asyncio.Event | None = None,
+        token_counter: Callable[[str], int] | None = None,
+    ) -> Tuple[int, str, str]:
+        """
+        Execute the CLI command with streaming output.
+
+        Returns:
+            Tuple of (returncode, stdout, stderr)
+        """
+        stdin_content = prompt if self._stdin_mode and prompt else None
+        progress_callback = None
+        if progress_display is not None:
+            def progress_callback(chunk: str, tokens: int, elapsed: float) -> None:
+                progress_display.update(chunk, tokens, elapsed)
+
+        streaming_client = StreamingClient(
+            progress_callback=progress_callback,
+            token_counter=token_counter,
+            cancel_event=cancel_event,
+        )
+
+        stdout_chunks: List[str] = []
+        stderr_chunks: List[str] = []
+        try:
+            async for chunk in streaming_client.stream_exec(
+                self._cli_cmd,
+                stdin_content,
+                timeout=self._timeout_sec,
+                workdir=workdir,
+            ):
+                if chunk.source == "stdout":
+                    stdout_chunks.append(chunk.text)
+                else:
+                    stderr_chunks.append(chunk.text)
+        except StreamTimeout:
+            stderr_chunks.append("\nTIMEOUT")
+            return 124, "".join(stdout_chunks), "".join(stderr_chunks)
+        except StreamCancelled:
+            stderr_chunks.append("\nCANCELLED")
+            return 130, "".join(stdout_chunks), "".join(stderr_chunks)
+
+        rc = streaming_client.returncode or 0
+        return rc, "".join(stdout_chunks), "".join(stderr_chunks)
+
 
 class AgentExecutor:
     def __init__(
@@ -97,9 +161,21 @@ class AgentExecutor:
         prompt: str,
         workdir: Path,
         out_file: Path,
+        streaming: StreamingContext | None = None,
     ) -> AgentResult:
-        print(f"[Agent-Start] {agent.name} ({agent.role})")
-        rc, out, err = await self._client.run(prompt, workdir=workdir)
+        use_rich = bool(streaming and streaming.enabled and getattr(streaming.progress_display, "use_rich", False))
+        if not use_rich:
+            print(f"[Agent-Start] {agent.name} ({agent.role})")
+        if streaming and streaming.enabled:
+            rc, out, err = await self._client.run_streaming(
+                prompt,
+                workdir=workdir,
+                progress_display=streaming.progress_display,
+                cancel_event=streaming.cancel_event,
+                token_counter=streaming.token_counter,
+            )
+        else:
+            rc, out, err = await self._client.run(prompt, workdir=workdir)
         if rc == 1:
             error_detail = (err.strip() or out.strip() or "Keine Fehlerausgabe.")
             print(
@@ -114,5 +190,6 @@ class AgentExecutor:
             f"{self._agent_output_cfg['stderr_header']}\n{err}\n"
         )
         write_text(out_file, content)
-        print(f"[Agent-Ende] {agent.name} rc={rc}")
+        if not use_rich:
+            print(f"[Agent-Ende] {agent.name} rc={rc}")
         return AgentResult(agent=agent, returncode=rc, stdout=out, stderr=err, out_file=out_file)

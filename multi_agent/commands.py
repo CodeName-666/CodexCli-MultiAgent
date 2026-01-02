@@ -63,7 +63,8 @@ def parse_args_task(cfg, argv: Optional[List[str]] = None) -> argparse.Namespace
     p = argparse.ArgumentParser(description=str(cli.description))
     config_help = str(args_cfg.get("config", {}).get("help") or "Pfad zur Konfigurationsdatei.")
     p.add_argument("--config", default=str(DEFAULT_CONFIG_PATH), help=config_help)
-    p.add_argument("--task", required=True, help=str(args_cfg["task"]["help"]))
+    p.add_argument("--task", required=False, help=str(args_cfg["task"]["help"]))
+    p.add_argument("--resume-run", help=str(args_cfg.get("resume_run", {}).get("help") or "Resume a cancelled run."))
     p.add_argument("--dir", default=".", help=str(args_cfg["dir"]["help"]))
     p.add_argument("--timeout", type=int, default=DEFAULT_TIMEOUT_SEC, help=str(args_cfg["timeout"]["help"]))
     p.add_argument("--apply", action="store_true", help=str(args_cfg["apply"]["help"]))
@@ -84,6 +85,8 @@ def parse_args_task(cfg, argv: Optional[List[str]] = None) -> argparse.Namespace
     p.add_argument("--ignore-fail", action="store_true", help=str(args_cfg["ignore_fail"]["help"]))
     p.add_argument("--task-split", action="store_true", help=str(args_cfg["task_split"]["help"]))
     p.add_argument("--no-task-resume", action="store_true", help=str(args_cfg["no_task_resume"]["help"]))
+    no_streaming_help = str(args_cfg.get("no_streaming", {}).get("help") or "Disable real-time output streaming.")
+    p.add_argument("--no-streaming", action="store_true", help=no_streaming_help)
     p.add_argument("--max-files", type=int, default=DEFAULT_MAX_FILES, help=str(args_cfg["max_files"]["help"]))
     p.add_argument(
         "--max-file-bytes",
@@ -110,6 +113,9 @@ class TaskCommand(Command):
             return int(ExitCode.CONFIG_ERROR)
 
         args = parse_args_task(cfg, argv)
+        if not args.task and not args.resume_run:
+            print_error("Fehler: --task ist leer.")
+            return int(ExitCode.VALIDATION_ERROR)
         if args.validate_config:
             from .schema_validator import validate_config
 

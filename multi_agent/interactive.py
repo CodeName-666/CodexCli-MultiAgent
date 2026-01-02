@@ -45,6 +45,7 @@ Beispiele:
 
     p.add_argument("--family", help="Agent-Familie (z.B. developer, designer)")
     p.add_argument("--task", help="Task-Beschreibung (bei @datei.txt wird Inhalt gelesen)")
+    p.add_argument("--resume-run", help="Resume a cancelled run (run_id or path)")
     p.add_argument("--dir", default=".", help="Working Directory (default: .)")
     p.add_argument("--timeout", type=int, default=DEFAULT_TIMEOUT_SEC, help=f"Timeout in Sekunden (default: {DEFAULT_TIMEOUT_SEC})")
 
@@ -57,6 +58,7 @@ Beispiele:
     p.add_argument("--ignore-fail", action="store_true", help="Fehler ignorieren und weitermachen")
     p.add_argument("--task-split", action="store_true", help="Task-Splitting aktivieren")
     p.add_argument("--no-task-resume", action="store_true", help="Task-Splitting Resume deaktivieren")
+    p.add_argument("--no-streaming", action="store_true", help="Disable real-time output streaming")
 
     p.add_argument("--max-files", type=int, default=DEFAULT_MAX_FILES, help=f"Max Dateien im Snapshot (default: {DEFAULT_MAX_FILES})")
     p.add_argument("--max-file-bytes", type=int, default=DEFAULT_MAX_FILE_BYTES, help=f"Max Bytes pro Datei (default: {DEFAULT_MAX_FILE_BYTES})")
@@ -167,6 +169,9 @@ def _get_options_interactive(args: argparse.Namespace) -> dict:
     task_split_input = input("Task-Splitting aktivieren? (y/N): ").strip().lower()
     task_split = task_split_input == "y"
 
+    streaming_input = input("Live-Streaming aktivieren? (Y/n): ").strip().lower()
+    no_streaming = streaming_input == "n"
+
     return {
         "workdir": workdir,
         "apply": apply,
@@ -174,6 +179,7 @@ def _get_options_interactive(args: argparse.Namespace) -> dict:
         "apply_confirm": apply_confirm,
         "fail_fast": fail_fast,
         "task_split": task_split,
+        "no_streaming": no_streaming,
     }
 
 
@@ -190,7 +196,10 @@ def _print_run_summary(family_path: Path, task: str, options: dict) -> None:
         print(f"  - Modus:    {options['apply_mode']}")
         print(f"  - Confirm:  {'Ja' if options['apply_confirm'] else 'Nein'}")
     print(f"Fail-Fast:    {'Ja' if options['fail_fast'] else 'Nein'}")
+    print(f"Streaming:    {'Ja' if not options['no_streaming'] else 'Nein'}")
     print(f"Task-Split:   {'Ja' if options['task_split'] else 'Nein'}")
+    if "resume_run" in options and options["resume_run"]:
+        print(f"Resume:       {options['resume_run']}")
     print("=" * 60)
 
 
@@ -200,10 +209,11 @@ def interactive_run(argv: Optional[List[str]] = None) -> int:
 
     has_family = args.family is not None
     has_task = args.task is not None
+    has_resume = args.resume_run is not None
     is_interactive = not args.non_interactive
 
     # Validate required args in non-interactive mode
-    if not has_family or not has_task:
+    if not has_family or (not has_task and not has_resume):
         if not is_interactive:
             print_error("--family und --task sind erforderlich im nicht-interaktiven Modus.")
             return int(ExitCode.VALIDATION_ERROR)
@@ -220,12 +230,14 @@ def interactive_run(argv: Optional[List[str]] = None) -> int:
             return int(ExitCode.VALIDATION_ERROR)
 
     # Get task
-    if not has_task:
+    if not has_task and not has_resume:
         task = _get_task_interactive()
         if task is None:
             return int(ExitCode.VALIDATION_ERROR)
-    else:
+    elif has_task:
         task = args.task
+    else:
+        task = f"[RESUME] {args.resume_run}"
 
     # Get options
     if not has_family and not has_task:
@@ -238,6 +250,8 @@ def interactive_run(argv: Optional[List[str]] = None) -> int:
             "apply_confirm": args.apply_confirm,
             "fail_fast": args.fail_fast,
             "task_split": args.task_split,
+            "no_streaming": args.no_streaming,
+            "resume_run": args.resume_run,
         }
 
     # Build final args
@@ -254,6 +268,8 @@ def interactive_run(argv: Optional[List[str]] = None) -> int:
         ignore_fail=args.ignore_fail,
         task_split=options["task_split"],
         no_task_resume=args.no_task_resume,
+        no_streaming=options["no_streaming"],
+        resume_run=args.resume_run,
         max_files=args.max_files,
         max_file_bytes=args.max_file_bytes,
         validate_config=False,
