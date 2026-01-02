@@ -1,3 +1,8 @@
+"""
+CLI Executor Module
+
+Generic subprocess execution for any CLI provider (Codex, Claude, Gemini, etc.)
+"""
 from __future__ import annotations
 
 import asyncio
@@ -9,7 +14,7 @@ from .models import AgentResult, AgentSpec
 from .utils import get_status_text, write_text
 
 
-class CodexClient:
+class CLIClient:
     """
     Generic CLI client that supports multiple providers (Codex, Claude, Gemini).
 
@@ -78,7 +83,7 @@ class CodexClient:
 class AgentExecutor:
     def __init__(
         self,
-        client: CodexClient,
+        client: CLIClient,
         agent_output_cfg: Dict[str, str],
         messages: Dict[str, str],
     ) -> None:
@@ -111,3 +116,7 @@ class AgentExecutor:
         write_text(out_file, content)
         print(f"[Agent-Ende] {agent.name} rc={rc}")
         return AgentResult(agent=agent, returncode=rc, stdout=out, stderr=err, out_file=out_file)
+
+
+# Backwards compatibility alias (deprecated)
+CodexClient = CLIClient

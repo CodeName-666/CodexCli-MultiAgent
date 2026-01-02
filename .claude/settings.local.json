@@ -27,7 +27,10 @@
       "Bash(do sed -i 's/config\\\\//agent_families\\\\//g; s/_roles\\\\//_agents\\\\//g; s/_roles:/_agents:/g; s/_roles\\)/_agents\\)/g' \"$file\")",
       "Bash(for file in *.json)",
       "Bash(do sed -i 's/config\\\\//agent_families\\\\//g; s/_roles\\\\//_agents\\\\//g' \"$file\")",
-      "Bash(python creators/add_cli_providers.py:*)"
+      "Bash(python creators/add_cli_providers.py:*)",
+      "Bash(find:*)",
+      "Bash(ls -la \"d:\\\\Projekte\\\\Python\\\\Codex_CLI_Agent\\\\multi_agent\"\" | grep \".py \")",
+      "Bash(del \"d:\\\\Projekte\\\\Python\\\\Codex_CLI_Agent\\\\multi_agent\\\\codex.py\")"
     ]
   }
 }

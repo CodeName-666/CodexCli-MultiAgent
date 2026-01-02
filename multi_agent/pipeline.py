@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Dict, List
 
 from .cli_adapter import CLIAdapter
-from .codex import AgentExecutor, CodexClient
+from .executor import AgentExecutor, CLIClient
 from .coordination import CoordinationConfig, CoordinationLog, TaskBoard
 from .diff_applier import BaseDiffApplier, UnifiedDiffApplier
 from .diff_utils import detect_file_overlaps, extract_touched_files_from_unified_diff, validate_touched_files_against_allowed_paths
@@ -380,7 +380,7 @@ class Pipeline:
                             cfg.snapshot,
                             max_files=args.max_files,
                             max_bytes_per_file=args.max_file_bytes,
-                            task=task,
+                            task=task_full,
                         )
                         snapshot_name = f"snapshot_after_{role_cfg.id}.txt"
                         write_text(run_dir / snapshot_name, snapshot_result.text)
@@ -851,7 +851,7 @@ class Pipeline:
         # Legacy support: role-specific codex_cmd
         if role_cfg.codex_cmd:
             cmd = parse_cmd(role_cfg.codex_cmd)
-            client = CodexClient(cmd, timeout_sec=timeout_sec, stdin_mode=True)
+            client = CLIClient(cmd, timeout_sec=timeout_sec, stdin_mode=True)
             return AgentExecutor(client, cfg.agent_output, cfg.messages)
 
         # New multi-provider support
@@ -877,7 +877,7 @@ class Pipeline:
                 # Determine if we need stdin mode
                 stdin_mode = stdin_content is not None or cli_adapter.get_provider(role_cfg.cli_provider).input_mode != "flag"
 
-                client = CodexClient(cmd, timeout_sec=adjusted_timeout, stdin_mode=stdin_mode)
+                client = CLIClient(cmd, timeout_sec=adjusted_timeout, stdin_mode=stdin_mode)
                 return AgentExecutor(client, cfg.agent_output, cfg.messages)
 
             except Exception as e:
@@ -885,9 +885,25 @@ class Pipeline:
                 print(f"Warning: Failed to load CLI provider '{role_cfg.cli_provider}': {e}")
                 print("Falling back to default Codex CLI...")
 
-        # Default: use global codex config
-        cmd = get_codex_cmd(cfg.codex_env_var, cfg.codex_default_cmd)
-        client = CodexClient(cmd, timeout_sec=timeout_sec, stdin_mode=True)
+        # Default: use global codex config via CLI adapter
+        static_config_dir = Path(__file__).parent.parent / "static_config"
+        cli_config_path = static_config_dir / "cli_config.json"
+        try:
+            cli_adapter = CLIAdapter(cli_config_path)
+            cmd, stdin_content, multiplier = cli_adapter.build_command_for_role(
+                provider_id=None,  # Uses default provider
+                prompt=None,
+                model=role_cfg.model,
+                timeout_sec=timeout_sec,
+                custom_params=role_cfg.cli_parameters or {}
+            )
+            adjusted_timeout = int(timeout_sec * multiplier)
+            stdin_mode = stdin_content is not None or cli_adapter.get_provider(None).input_mode != "flag"
+            client = CLIClient(cmd, timeout_sec=adjusted_timeout, stdin_mode=stdin_mode)
+        except Exception:
+            # Ultimate fallback: legacy codex command
+            cmd = get_codex_cmd(cfg.codex_env_var, cfg.codex_default_cmd)
+            client = CLIClient(cmd, timeout_sec=timeout_sec, stdin_mode=True)
         return AgentExecutor(client, cfg.agent_output, cfg.messages)
 
     @staticmethod

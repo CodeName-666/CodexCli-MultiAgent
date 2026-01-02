@@ -76,13 +76,13 @@ class TaskBoard:
     async def _read(self) -> Dict[str, object]:
         if not self._path.exists():
             return {"version": 0, "tasks": []}
-        raw = self._path.read_text(encoding="utf-8")
+        raw = await asyncio.to_thread(self._path.read_text, encoding="utf-8")
         return json.loads(raw)
 
     async def _write(self, data: Dict[str, object]) -> None:
         self._path.parent.mkdir(parents=True, exist_ok=True)
         payload = json.dumps(data, indent=2, ensure_ascii=True) + "\n"
-        self._path.write_text(payload, encoding="utf-8")
+        await asyncio.to_thread(self._path.write_text, payload, encoding="utf-8")
 
     @asynccontextmanager
     async def _acquire_lock(self):

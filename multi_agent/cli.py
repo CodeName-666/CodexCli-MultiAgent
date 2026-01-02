@@ -186,6 +186,264 @@ async def _run_split(pipeline, args: argparse.Namespace, cfg) -> int:
     return 1 if any_fail else 0
 
 
+def parse_args_run(argv: Optional[List[str]] = None) -> argparse.Namespace:
+    """Parse arguments for the run subcommand (interactive/CLI hybrid)."""
+    p = argparse.ArgumentParser(
+        prog="multi_agent_codex run",
+        description="Führe einen Multi-Agent-Task aus (interaktiv oder mit CLI-Argumenten)",
+        epilog="""
+Verwendungsmodi:
+
+  INTERAKTIV (ohne Argumente):
+    multi_agent_codex run
+
+    Führt durch einen geführten Dialog durch alle Optionen.
+
+  CLI-MODUS (mit Argumenten):
+    multi_agent_codex run --family developer --task "Implementiere Feature X" --apply
+
+    Nutzt alle angegebenen Parameter direkt, fehlende werden interaktiv abgefragt.
+
+Beispiele:
+  # Vollständig interaktiv
+  multi_agent_codex run
+
+  # Familie vorgeben, Rest interaktiv
+  multi_agent_codex run --family developer
+
+  # Vollständig per CLI
+  multi_agent_codex run --family developer --task "Fix Bug in utils.py" --apply --dir ./myproject
+        """,
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+
+    # Core arguments
+    p.add_argument("--family", help="Agent-Familie (z.B. developer, designer)")
+    p.add_argument("--task", help="Task-Beschreibung (bei @datei.txt wird Inhalt gelesen)")
+    p.add_argument("--dir", default=".", help="Working Directory (default: .)")
+    p.add_argument("--timeout", type=int, default=DEFAULT_TIMEOUT_SEC, help=f"Timeout in Sekunden (default: {DEFAULT_TIMEOUT_SEC})")
+
+    # Apply options
+    p.add_argument("--apply", action="store_true", help="Diff automatisch anwenden")
+    p.add_argument("--apply-mode", choices=["end", "role"], default="end", help="Apply-Modus: end=am Ende, role=nach jeder Rolle (default: end)")
+    p.add_argument("--apply-confirm", action="store_true", help="Vor jedem Apply bestätigen")
+    p.add_argument("--apply-roles", action="append", default=[], help="Nur für diese Rollen Apply ausführen (wiederholbar)")
+
+    # Execution options
+    p.add_argument("--fail-fast", action="store_true", help="Bei Fehler sofort abbrechen")
+    p.add_argument("--ignore-fail", action="store_true", help="Fehler ignorieren und weitermachen")
+    p.add_argument("--task-split", action="store_true", help="Task-Splitting aktivieren")
+    p.add_argument("--no-task-resume", action="store_true", help="Task-Splitting Resume deaktivieren")
+
+    # Limits
+    p.add_argument("--max-files", type=int, default=DEFAULT_MAX_FILES, help=f"Max Dateien im Snapshot (default: {DEFAULT_MAX_FILES})")
+    p.add_argument("--max-file-bytes", type=int, default=DEFAULT_MAX_FILE_BYTES, help=f"Max Bytes pro Datei (default: {DEFAULT_MAX_FILE_BYTES})")
+
+    # Interactive control
+    p.add_argument("--non-interactive", action="store_true", help="Nicht-interaktiver Modus: Fehler bei fehlenden Parametern")
+    p.add_argument("--yes", "-y", action="store_true", help="Alle Bestätigungen automatisch mit Ja beantworten")
+
+    return p.parse_args(argv)
+
+
+def interactive_run(argv: Optional[List[str]] = None) -> None:
+    """Interactive/CLI hybrid mode - ask user for missing inputs or use CLI args."""
+    args = parse_args_run(argv)
+
+    # Determine if we're in fully interactive mode (no args) or hybrid mode (some args)
+    has_family = args.family is not None
+    has_task = args.task is not None
+    is_interactive = not args.non_interactive
+
+    if not has_family or not has_task:
+        if not is_interactive:
+            print("Fehler: --family und --task sind erforderlich im nicht-interaktiven Modus.", file=sys.stderr)
+            sys.exit(2)
+        print("\n=== Multi-Agent Codex - Interactive Mode ===\n")
+
+    # Step 1: Select family (if not provided)
+    if not has_family:
+        families_dir = Path("agent_families")
+        if not families_dir.exists():
+            print("Fehler: agent_families/ Verzeichnis nicht gefunden.", file=sys.stderr)
+            sys.exit(2)
+
+        families = sorted(families_dir.glob("*_main.json"))
+        families = [f for f in families if f.name not in ['defaults.json', 'multi_cli_example.json']]
+
+        if not families:
+            print("Fehler: Keine Agent-Familien gefunden.", file=sys.stderr)
+            print("Erstelle zuerst eine Familie mit: multi_agent_codex create-family", file=sys.stderr)
+            sys.exit(2)
+
+        print("Verfügbare Familien:")
+        for i, family in enumerate(families, 1):
+            family_name = family.stem.replace('_main', '')
+            print(f"  {i}. {family_name}")
+
+        # Select family
+        try:
+            choice = input("\nWähle Familie (Nummer oder Name): ").strip()
+            if choice.isdigit():
+                family_path = families[int(choice) - 1]
+            else:
+                # Try to find by name
+                matching = [f for f in families if choice in f.stem]
+                if matching:
+                    family_path = matching[0]
+                else:
+                    family_path = families_dir / f"{choice}_main.json"
+
+            if not family_path.exists():
+                print(f"Fehler: Familie nicht gefunden: {choice}", file=sys.stderr)
+                sys.exit(2)
+
+            print(f"✓ Gewählt: {family_path.stem.replace('_main', '')}")
+
+        except (ValueError, IndexError):
+            print("Fehler: Ungültige Auswahl", file=sys.stderr)
+            sys.exit(2)
+    else:
+        # Family provided via CLI
+        families_dir = Path("agent_families")
+        family_path = families_dir / f"{args.family}_main.json"
+        if not family_path.exists():
+            print(f"Fehler: Familie nicht gefunden: {args.family}", file=sys.stderr)
+            sys.exit(2)
+
+    # Step 2: Get task description (if not provided)
+    if not has_task:
+        print("\n--- Task-Beschreibung ---")
+        print("Gib eine Beschreibung der Aufgabe ein (mehrere Zeilen möglich).")
+        print("Beende Eingabe mit einer leeren Zeile.\n")
+
+        task_lines = []
+        while True:
+            line = input()
+            if not line.strip():
+                break
+            task_lines.append(line)
+
+        if not task_lines:
+            print("Fehler: Keine Task-Beschreibung angegeben.", file=sys.stderr)
+            sys.exit(2)
+
+        task = "\n".join(task_lines)
+        print(f"\n✓ Task: {task[:100]}{'...' if len(task) > 100 else ''}")
+    else:
+        task = args.task
+
+    # Step 3: Options (use CLI args or ask interactively)
+    if not has_family and not has_task:
+        # Fully interactive - ask for options
+        print("\n--- Optionen ---")
+
+        # Working directory
+        workdir = input(f"Working Directory (default: {args.dir}): ").strip() or args.dir
+
+        # Apply diff?
+        apply_input = input("Diff automatisch anwenden? (y/N): ").strip().lower()
+        apply = apply_input == 'y'
+
+        apply_mode = "end"
+        apply_confirm = False
+        if apply:
+            mode_input = input("Apply-Modus (end/role, default: end): ").strip().lower()
+            if mode_input in ['end', 'role']:
+                apply_mode = mode_input
+
+            confirm_input = input("Vor jedem Apply bestätigen? (y/N): ").strip().lower()
+            apply_confirm = confirm_input == 'y'
+
+        # Fail-fast?
+        fail_fast_input = input("Bei Fehler sofort abbrechen? (y/N): ").strip().lower()
+        fail_fast = fail_fast_input == 'y'
+
+        # Task splitting?
+        task_split_input = input("Task-Splitting aktivieren? (y/N): ").strip().lower()
+        task_split = task_split_input == 'y'
+    else:
+        # Use CLI args
+        workdir = args.dir
+        apply = args.apply
+        apply_mode = args.apply_mode
+        apply_confirm = args.apply_confirm
+        fail_fast = args.fail_fast
+        task_split = args.task_split
+
+    # Build final args
+    final_args = argparse.Namespace(
+        config=str(family_path),
+        task=task,
+        dir=workdir,
+        timeout=args.timeout,
+        apply=apply,
+        apply_mode=apply_mode,
+        apply_roles=args.apply_roles,
+        apply_confirm=apply_confirm,
+        fail_fast=fail_fast,
+        ignore_fail=args.ignore_fail,
+        task_split=task_split,
+        no_task_resume=args.no_task_resume,
+        max_files=args.max_files,
+        max_file_bytes=args.max_file_bytes,
+        validate_config=False
+    )
+
+    # Load config and run
+    try:
+        cfg = load_app_config(family_path)
+    except FileNotFoundError as e:
+        print(f"Fehler: Konfigurationsdatei nicht gefunden: {e}", file=sys.stderr)
+        sys.exit(2)
+    except (json.JSONDecodeError, KeyError, ValueError) as e:
+        print(f"Fehler: Ungueltige Konfiguration: {e}", file=sys.stderr)
+        sys.exit(2)
+
+    # Show summary and confirm (unless --yes)
+    print("\n" + "=" * 60)
+    print("ZUSAMMENFASSUNG")
+    print("=" * 60)
+    print(f"Familie:      {family_path.stem.replace('_main', '')}")
+    print(f"Task:         {task[:80]}{'...' if len(task) > 80 else ''}")
+    print(f"Verzeichnis:  {workdir}")
+    print(f"Auto-Apply:   {'Ja' if apply else 'Nein'}")
+    if apply:
+        print(f"  - Modus:    {apply_mode}")
+        print(f"  - Confirm:  {'Ja' if apply_confirm else 'Nein'}")
+    print(f"Fail-Fast:    {'Ja' if fail_fast else 'Nein'}")
+    print(f"Task-Split:   {'Ja' if task_split else 'Nein'}")
+    print("=" * 60)
+
+    if not args.yes:
+        confirm = input("\nTask starten? (Y/n): ").strip().lower()
+        if confirm == 'n':
+            print("Abgebrochen.")
+            sys.exit(0)
+
+    # Run pipeline
+    print("\n" + "=" * 60)
+    print("STARTE MULTI-AGENT PIPELINE")
+    print("=" * 60 + "\n")
+
+    pipeline = build_pipeline()
+    try:
+        split_enabled = bool(final_args.task_split) or bool(getattr(cfg, "task_split", {}).get("enabled", False))
+        if split_enabled:
+            rc = asyncio.run(_run_split(pipeline, final_args, cfg))
+        else:
+            rc = asyncio.run(pipeline.run(final_args, cfg))
+    except KeyboardInterrupt:
+        print(f"\n{cfg.messages['interrupted']}", file=sys.stderr)
+        rc = 130
+    except FileNotFoundError as e:
+        print(f"\n{cfg.messages['codex_not_found'].format(error=e)}", file=sys.stderr)
+        print(cfg.messages["codex_tip"], file=sys.stderr)
+        rc = 127
+
+    sys.exit(rc)
+
+
 def main_task() -> None:
     """Original main function - now a subcommand handler."""
     config_path = _parse_config_path(None)
@@ -228,13 +486,21 @@ def main_task() -> None:
 def main() -> None:
     """Main entry point with subcommand support."""
     # Check if we have a subcommand
-    if len(sys.argv) > 1 and sys.argv[1] in ['create-family', 'create-role']:
+    if len(sys.argv) > 1 and sys.argv[1] in ['create-family', 'create-role', 'run']:
+        subcommand = sys.argv[1]
+
+        # Handle 'run' subcommand (interactive/hybrid mode)
+        if subcommand == 'run':
+            # Pass remaining args to interactive_run for argparse
+            run_argv = sys.argv[2:]
+            interactive_run(run_argv)
+
+        # Handle creator subcommands
         if not CREATORS_AVAILABLE:
             print("Fehler: Creator-Module nicht verfügbar.", file=sys.stderr)
             print("Stelle sicher, dass das 'creators' Verzeichnis im Python-Path ist.", file=sys.stderr)
             sys.exit(2)
 
-        subcommand = sys.argv[1]
         # Remove subcommand from argv for the creator's argparse
         creator_argv = sys.argv[2:]
 
@@ -253,32 +519,50 @@ def main() -> None:
     # If no recognized subcommand, check for --help to show available commands
     elif len(sys.argv) > 1 and sys.argv[1] in ['-h', '--help']:
         print("Multi-Agent Codex CLI")
-        print("=" * 50)
+        print("=" * 60)
         print("\nDieses CLI bietet mehrere Funktionen zum Arbeiten mit Multi-Agent-Systemen.\n")
         print("Verwendung:")
+        print("  multi_agent_codex                                         # Interaktiver Modus (NEU!)")
+        print("  multi_agent_codex run                                     # Interaktiver Modus (explizit)")
         print("  multi_agent_codex --task <description> [options]          # Rückwärtskompatibel")
-        print("  multi_agent_codex create-family --description <text> [...]")
+        print("  multi_agent_codex create-family --description <text> [...] ")
         print("  multi_agent_codex create-role --nl-description <text> [...]\n")
         print("Unterkommandos:")
+        print("  run             Interaktiver Modus - Führe Task mit geführter Eingabe aus (EMPFOHLEN)")
         print("  create-family   Erstelle eine neue Agent-Familie von einer")
         print("                  natürlichsprachlichen Beschreibung")
         print("  create-role     Erstelle eine neue Agent-Rolle in einer bestehenden Familie\n")
-        print("Standard-Verhalten (ohne Unterkommando):")
-        print("  Führt einen Multi-Agent-Task aus (benötigt --task Argument)\n")
+        print("Standard-Verhalten (ohne Argument):")
+        print("  Startet den interaktiven Modus.\n")
         print("Hilfe zu Unterkommandos:")
         print("  multi_agent_codex create-family --help")
         print("  multi_agent_codex create-role --help\n")
         print("Beispiele:")
+        print("  # Interaktiver Modus (empfohlen für neue Benutzer)")
+        print("  multi_agent_codex")
+        print("  multi_agent_codex run")
+        print("")
         print("  # Familie erstellen")
         print("  multi_agent_codex create-family --description \"Ein Team für ML-Entwicklung\"")
         print("")
         print("  # Rolle erstellen")
         print("  multi_agent_codex create-role --nl-description \"Ein Code Reviewer\"")
         print("")
-        print("  # Task ausführen (rückwärtskompatibel)")
+        print("  # Task ausführen (direkt, rückwärtskompatibel)")
         print("  multi_agent_codex --task \"Implementiere Feature X\" --apply")
         sys.exit(0)
 
-    # Default: run task command (backwards compatibility)
-    else:
+    # Check if --task is provided (backwards compatibility)
+    elif '--task' in sys.argv:
         main_task()
+
+    # Default: interactive mode if no arguments or only non-subcommand flags
+    else:
+        # If no task is provided and no recognized subcommand, go interactive
+        if len(sys.argv) == 1:
+            # No arguments at all - start interactive
+            interactive_run()
+        else:
+            # Some arguments but no --task - might be invalid, try task mode
+            # This will show appropriate error message
+            main_task()
