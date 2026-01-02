@@ -247,24 +247,43 @@ class RoleConfig:
 
 @dataclasses.dataclass(frozen=True)
 class AppConfig:
+    """
+    Main application configuration.
+
+    Aggregates all configuration aspects of the multi-agent system.
+    Contains 22 fields organized by functional area (see inline comments).
+    """
+    # Runtime Configuration
     system_rules: str
     roles: List[RoleConfig]
     final_role_id: str
+
+    # Resource Limits
     summary_max_chars: int
     final_summary_max_chars: int
+
+    # Paths & Coordination
     paths: PathsConfig
     coordination: CoordinationConfig
     outputs: OutputsConfig
     snapshot: SnapshotConfig
     agent_output: AgentOutputConfig
+
+    # Messages & Localization
     messages: MessageCatalog
     diff_messages: DiffMessageCatalog
+
+    # CLI & Providers
     cli: CliConfig
     cli_providers: CliProvidersConfig
+
+    # Role & Task Defaults
     role_defaults: RoleDefaultsConfig
     prompt_limits: PromptLimitsConfig
     task_limits: TaskLimitsConfig
     task_split: TaskSplitConfig
+
+    # Safety & Logging
     diff_safety: DiffSafetyConfig
     diff_apply: DiffApplyConfig
     logging: LoggingConfig

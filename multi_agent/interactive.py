@@ -67,6 +67,133 @@ Beispiele:
     return p.parse_args(argv)
 
 
+def _select_family_interactive() -> Optional[Path]:
+    """Interactively select a family from available options."""
+    families_dir = Path("agent_families")
+    if not families_dir.exists():
+        print_error("agent_families/ Verzeichnis nicht gefunden.")
+        return None
+
+    families = sorted(families_dir.glob("*_main.json"))
+    families = [f for f in families if f.name not in ["defaults.json", "multi_cli_example.json"]]
+
+    if not families:
+        print_error("Keine Agent-Familien gefunden.")
+        print("Erstelle zuerst eine Familie mit: multi_agent_codex create-family", file=sys.stderr)
+        return None
+
+    print("Verfuegbare Familien:")
+    for i, family in enumerate(families, 1):
+        family_name = family.stem.replace("_main", "")
+        print(f"  {i}. {family_name}")
+
+    try:
+        choice = input("\nWaehle Familie (Nummer oder Name): ").strip()
+        if choice.isdigit():
+            family_path = families[int(choice) - 1]
+        else:
+            matching = [f for f in families if choice in f.stem]
+            if matching:
+                family_path = matching[0]
+            else:
+                family_path = families_dir / f"{choice}_main.json"
+
+        if not family_path.exists():
+            print_error(f"Familie nicht gefunden: {choice}")
+            return None
+
+        print(f"[OK] Gewaehlt: {family_path.stem.replace('_main', '')}")
+        return family_path
+    except (ValueError, IndexError):
+        print_error("Ungueltige Auswahl")
+        return None
+
+
+def _get_family_from_args(family_name: str) -> Optional[Path]:
+    """Get family path from CLI argument."""
+    families_dir = Path("agent_families")
+    family_path = families_dir / f"{family_name}_main.json"
+    if not family_path.exists():
+        print_error(f"Familie nicht gefunden: {family_name}")
+        return None
+    return family_path
+
+
+def _get_task_interactive() -> Optional[str]:
+    """Get task description from interactive input."""
+    print("\n--- Task-Beschreibung ---")
+    print("Gib eine Beschreibung der Aufgabe ein (mehrere Zeilen moeglich).")
+    print("Beende Eingabe mit einer leeren Zeile.\n")
+
+    task_lines = []
+    while True:
+        line = input()
+        if not line.strip():
+            break
+        task_lines.append(line)
+
+    if not task_lines:
+        print_error("Keine Task-Beschreibung angegeben.")
+        return None
+
+    task = "\n".join(task_lines)
+    suffix = "..." if len(task) > 100 else ""
+    print(f"\n[OK] Task: {task[:100]}{suffix}")
+    return task
+
+
+def _get_options_interactive(args: argparse.Namespace) -> dict:
+    """Get runtime options from interactive input."""
+    print("\n--- Optionen ---")
+
+    workdir = input(f"Working Directory (default: {args.dir}): ").strip() or args.dir
+
+    apply_input = input("Diff automatisch anwenden? (y/N): ").strip().lower()
+    apply = apply_input == "y"
+
+    apply_mode = "end"
+    apply_confirm = False
+    if apply:
+        mode_input = input("Apply-Modus (end/role, default: end): ").strip().lower()
+        if mode_input in ["end", "role"]:
+            apply_mode = mode_input
+
+        confirm_input = input("Vor jedem Apply bestaetigen? (y/N): ").strip().lower()
+        apply_confirm = confirm_input == "y"
+
+    fail_fast_input = input("Bei Fehler sofort abbrechen? (y/N): ").strip().lower()
+    fail_fast = fail_fast_input == "y"
+
+    task_split_input = input("Task-Splitting aktivieren? (y/N): ").strip().lower()
+    task_split = task_split_input == "y"
+
+    return {
+        "workdir": workdir,
+        "apply": apply,
+        "apply_mode": apply_mode,
+        "apply_confirm": apply_confirm,
+        "fail_fast": fail_fast,
+        "task_split": task_split,
+    }
+
+
+def _print_run_summary(family_path: Path, task: str, options: dict) -> None:
+    """Print summary of the run configuration."""
+    print("\n" + "=" * 60)
+    print("ZUSAMMENFASSUNG")
+    print("=" * 60)
+    print(f"Familie:      {family_path.stem.replace('_main', '')}")
+    print(f"Task:         {task[:80]}{'...' if len(task) > 80 else ''}")
+    print(f"Verzeichnis:  {options['workdir']}")
+    print(f"Auto-Apply:   {'Ja' if options['apply'] else 'Nein'}")
+    if options["apply"]:
+        print(f"  - Modus:    {options['apply_mode']}")
+        print(f"  - Confirm:  {'Ja' if options['apply_confirm'] else 'Nein'}")
+    print(f"Fail-Fast:    {'Ja' if options['fail_fast'] else 'Nein'}")
+    print(f"Task-Split:   {'Ja' if options['task_split'] else 'Nein'}")
+    print("=" * 60)
+
+
 def interactive_run(argv: Optional[List[str]] = None) -> int:
     """Interactive/CLI hybrid mode - ask user for missing inputs or use CLI args."""
     args = parse_args_run(argv)
@@ -75,128 +202,64 @@ def interactive_run(argv: Optional[List[str]] = None) -> int:
     has_task = args.task is not None
     is_interactive = not args.non_interactive
 
+    # Validate required args in non-interactive mode
     if not has_family or not has_task:
         if not is_interactive:
             print_error("--family und --task sind erforderlich im nicht-interaktiven Modus.")
             return int(ExitCode.VALIDATION_ERROR)
         print("\n=== Multi-Agent Codex - Interactive Mode ===\n")
 
+    # Select family
     if not has_family:
-        families_dir = Path("agent_families")
-        if not families_dir.exists():
-            print_error("agent_families/ Verzeichnis nicht gefunden.")
+        family_path = _select_family_interactive()
+        if family_path is None:
             return int(ExitCode.CONFIG_ERROR)
-
-        families = sorted(families_dir.glob("*_main.json"))
-        families = [f for f in families if f.name not in ["defaults.json", "multi_cli_example.json"]]
-
-        if not families:
-            print_error("Keine Agent-Familien gefunden.")
-            print("Erstelle zuerst eine Familie mit: multi_agent_codex create-family", file=sys.stderr)
-            return int(ExitCode.CONFIG_ERROR)
-
-        print("Verfuegbare Familien:")
-        for i, family in enumerate(families, 1):
-            family_name = family.stem.replace("_main", "")
-            print(f"  {i}. {family_name}")
-
-        try:
-            choice = input("\nWaehle Familie (Nummer oder Name): ").strip()
-            if choice.isdigit():
-                family_path = families[int(choice) - 1]
-            else:
-                matching = [f for f in families if choice in f.stem]
-                if matching:
-                    family_path = matching[0]
-                else:
-                    family_path = families_dir / f"{choice}_main.json"
-
-            if not family_path.exists():
-                print_error(f"Familie nicht gefunden: {choice}")
-                return int(ExitCode.VALIDATION_ERROR)
-
-            print(f"[OK] Gewaehlt: {family_path.stem.replace('_main', '')}")
-        except (ValueError, IndexError):
-            print_error("Ungueltige Auswahl")
-            return int(ExitCode.VALIDATION_ERROR)
     else:
-        families_dir = Path("agent_families")
-        family_path = families_dir / f"{args.family}_main.json"
-        if not family_path.exists():
-            print_error(f"Familie nicht gefunden: {args.family}")
+        family_path = _get_family_from_args(args.family)
+        if family_path is None:
             return int(ExitCode.VALIDATION_ERROR)
 
+    # Get task
     if not has_task:
-        print("\n--- Task-Beschreibung ---")
-        print("Gib eine Beschreibung der Aufgabe ein (mehrere Zeilen moeglich).")
-        print("Beende Eingabe mit einer leeren Zeile.\n")
-
-        task_lines = []
-        while True:
-            line = input()
-            if not line.strip():
-                break
-            task_lines.append(line)
-
-        if not task_lines:
-            print_error("Keine Task-Beschreibung angegeben.")
+        task = _get_task_interactive()
+        if task is None:
             return int(ExitCode.VALIDATION_ERROR)
-
-        task = "\n".join(task_lines)
-        suffix = "..." if len(task) > 100 else ""
-        print(f"\n[OK] Task: {task[:100]}{suffix}")
     else:
         task = args.task
 
+    # Get options
     if not has_family and not has_task:
-        print("\n--- Optionen ---")
-
-        workdir = input(f"Working Directory (default: {args.dir}): ").strip() or args.dir
-
-        apply_input = input("Diff automatisch anwenden? (y/N): ").strip().lower()
-        apply = apply_input == "y"
-
-        apply_mode = "end"
-        apply_confirm = False
-        if apply:
-            mode_input = input("Apply-Modus (end/role, default: end): ").strip().lower()
-            if mode_input in ["end", "role"]:
-                apply_mode = mode_input
-
-            confirm_input = input("Vor jedem Apply bestaetigen? (y/N): ").strip().lower()
-            apply_confirm = confirm_input == "y"
-
-        fail_fast_input = input("Bei Fehler sofort abbrechen? (y/N): ").strip().lower()
-        fail_fast = fail_fast_input == "y"
-
-        task_split_input = input("Task-Splitting aktivieren? (y/N): ").strip().lower()
-        task_split = task_split_input == "y"
+        options = _get_options_interactive(args)
     else:
-        workdir = args.dir
-        apply = args.apply
-        apply_mode = args.apply_mode
-        apply_confirm = args.apply_confirm
-        fail_fast = args.fail_fast
-        task_split = args.task_split
+        options = {
+            "workdir": args.dir,
+            "apply": args.apply,
+            "apply_mode": args.apply_mode,
+            "apply_confirm": args.apply_confirm,
+            "fail_fast": args.fail_fast,
+            "task_split": args.task_split,
+        }
 
+    # Build final args
     final_args = argparse.Namespace(
         config=str(family_path),
         task=task,
-        dir=workdir,
+        dir=options["workdir"],
         timeout=args.timeout,
-        apply=apply,
-        apply_mode=apply_mode,
+        apply=options["apply"],
+        apply_mode=options["apply_mode"],
         apply_roles=args.apply_roles,
-        apply_confirm=apply_confirm,
-        fail_fast=fail_fast,
+        apply_confirm=options["apply_confirm"],
+        fail_fast=options["fail_fast"],
         ignore_fail=args.ignore_fail,
-        task_split=task_split,
+        task_split=options["task_split"],
         no_task_resume=args.no_task_resume,
         max_files=args.max_files,
         max_file_bytes=args.max_file_bytes,
         validate_config=False,
     )
 
+    # Load config
     try:
         cfg = load_app_config(family_path)
     except FileNotFoundError as exc:
@@ -206,19 +269,8 @@ def interactive_run(argv: Optional[List[str]] = None) -> int:
         print_error(f"Ungueltige Konfiguration: {exc}")
         return int(ExitCode.CONFIG_ERROR)
 
-    print("\n" + "=" * 60)
-    print("ZUSAMMENFASSUNG")
-    print("=" * 60)
-    print(f"Familie:      {family_path.stem.replace('_main', '')}")
-    print(f"Task:         {task[:80]}{'...' if len(task) > 80 else ''}")
-    print(f"Verzeichnis:  {workdir}")
-    print(f"Auto-Apply:   {'Ja' if apply else 'Nein'}")
-    if apply:
-        print(f"  - Modus:    {apply_mode}")
-        print(f"  - Confirm:  {'Ja' if apply_confirm else 'Nein'}")
-    print(f"Fail-Fast:    {'Ja' if fail_fast else 'Nein'}")
-    print(f"Task-Split:   {'Ja' if task_split else 'Nein'}")
-    print("=" * 60)
+    # Print summary and confirm
+    _print_run_summary(family_path, task, options)
 
     if not args.yes:
         confirm = input("\nTask starten? (Y/n): ").strip().lower()

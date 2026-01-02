@@ -266,51 +266,60 @@ class Pipeline:
                 completed_roles.add(role_id)
                 pending_roles.pop(role_id, None)
 
-    async def _run_role(self, ctx: PipelineRunContext, role_cfg: RoleConfig) -> str:
-        if ctx.task_board is None or ctx.coordination_log is None:
-            raise RuntimeError("Coordination not initialized")
-        task_board = ctx.task_board
-        coordination_log = ctx.coordination_log
+    async def _setup_shard_plan(
+        self, ctx: PipelineRunContext, role_cfg: RoleConfig
+    ) -> ShardPlan | None:
+        """Create and save shard plan if sharding is enabled."""
+        if role_cfg.shard_mode == "none" or role_cfg.instances <= 1:
+            return None
 
-        role_start = time.monotonic()
-        ctx.json_logger.log("role_start", {"role": role_cfg.id})
+        async with ctx.context_lock:
+            current_task = ctx.context.get("task", ctx.task_display)
 
-        shard_plan: ShardPlan | None = None
-        if role_cfg.shard_mode != "none" and role_cfg.instances > 1:
-            async with ctx.context_lock:
-                current_task = ctx.context.get("task", ctx.task_display)
-            shard_plan = create_shard_plan(role_cfg, current_task)
-            if shard_plan:
-                shard_plan_path = ctx.run_dir / f"{role_cfg.id}_shard_plan.json"
-                save_shard_plan(shard_plan, shard_plan_path)
-                ctx.json_logger.log(
-                    "shard_plan_created",
-                    {
-                        "role": role_cfg.id,
-                        "shard_count": shard_plan.shard_count,
-                        "shard_mode": shard_plan.shard_mode,
-                    },
-                )
+        shard_plan = create_shard_plan(role_cfg, current_task)
+        if shard_plan:
+            shard_plan_path = ctx.run_dir / f"{role_cfg.id}_shard_plan.json"
+            save_shard_plan(shard_plan, shard_plan_path)
+            ctx.json_logger.log(
+                "shard_plan_created",
+                {
+                    "role": role_cfg.id,
+                    "shard_count": shard_plan.shard_count,
+                    "shard_mode": shard_plan.shard_mode,
+                },
+            )
+        return shard_plan
 
-        if role_cfg.run_if_review_critical:
-            async with ctx.context_lock:
-                reviewer_output = ctx.context.get("reviewer_output", "")
-            if not self._review_has_critical(ctx.cfg.feedback_loop, reviewer_output):
-                await self._mark_role_skipped(role_cfg, task_board, coordination_log)
-                ctx.json_logger.log("role_skip", {"role": role_cfg.id, "reason": "no_critical_review"})
-                async with ctx.meta_lock:
-                    ctx.run_meta["roles"][role_cfg.id] = {
-                        "instances_total": role_cfg.instances,
-                        "status": "skipped",
-                        "duration_sec": 0.0,
-                        "returncodes": [],
-                    }
-                async with ctx.context_lock:
-                    ctx.context[f"{role_cfg.id}_summary"] = ""
-                    ctx.context[f"{role_cfg.id}_output"] = ""
-                ctx.results[role_cfg.id] = []
-                return role_cfg.id
+    async def _check_role_skip_condition(
+        self, ctx: PipelineRunContext, role_cfg: RoleConfig, task_board: TaskBoard, coordination_log: CoordinationLog
+    ) -> bool:
+        """Check if role should be skipped based on review criticality."""
+        if not role_cfg.run_if_review_critical:
+            return False
 
+        async with ctx.context_lock:
+            reviewer_output = ctx.context.get("reviewer_output", "")
+
+        if self._review_has_critical(ctx.cfg.feedback_loop, reviewer_output):
+            return False
+
+        await self._mark_role_skipped(role_cfg, task_board, coordination_log)
+        ctx.json_logger.log("role_skip", {"role": role_cfg.id, "reason": "no_critical_review"})
+        async with ctx.meta_lock:
+            ctx.run_meta["roles"][role_cfg.id] = {
+                "instances_total": role_cfg.instances,
+                "status": "skipped",
+                "duration_sec": 0.0,
+                "returncodes": [],
+            }
+        async with ctx.context_lock:
+            ctx.context[f"{role_cfg.id}_summary"] = ""
+            ctx.context[f"{role_cfg.id}_output"] = ""
+        ctx.results[role_cfg.id] = []
+        return True
+
+    def _validate_role_prompt(self, ctx: PipelineRunContext, role_cfg: RoleConfig) -> bool:
+        """Validate that role prompt template can be formatted."""
         validation_context = dict(ctx.context)
         validation_context["role_id"] = role_cfg.id
         validation_context["role_name"] = role_cfg.name
@@ -319,12 +328,171 @@ class Pipeline:
         validation_context["repair_note"] = ""
         try:
             _ = format_prompt(role_cfg.prompt_template, validation_context, role_cfg.id, ctx.cfg.messages)
+            return True
         except ValueError as exc:
             ctx.reporter.error(str(exc))
             print(str(exc), file=sys.stderr)
             ctx.abort_run = True
+            return False
+
+    async def _validate_and_handle_shards(
+        self,
+        ctx: PipelineRunContext,
+        role_cfg: RoleConfig,
+        shard_plan: ShardPlan,
+        role_results: List[AgentResult],
+    ) -> None:
+        """Validate shard results and handle overlaps."""
+        validation_ok, validation_msg = await self._validate_shard_results(
+            role_cfg,
+            shard_plan,
+            role_results,
+            ctx.run_dir,
+            ctx.json_logger,
+        )
+        if not validation_ok:
+            async with ctx.report_lock:
+                ctx.reporter.error(f"Shard validation failed for {role_cfg.id}: {validation_msg}")
+            if role_cfg.overlap_policy == "forbid":
+                ctx.abort_run = True
+            elif role_cfg.overlap_policy == "warn":
+                async with ctx.report_lock:
+                    ctx.reporter.step("Warning", f"Overlaps detected in {role_cfg.id}", advance=0)
+
+    async def _apply_role_diffs_if_needed(
+        self,
+        ctx: PipelineRunContext,
+        role_cfg: RoleConfig,
+        role_results: List[AgentResult],
+    ) -> None:
+        """Apply diffs if apply mode is 'role' and conditions are met."""
+        should_apply = (
+            ctx.args.apply
+            and ctx.args.apply_mode == "role"
+            and role_cfg.apply_diff
+            and role_cfg.id in ctx.apply_role_ids
+        )
+        if not should_apply:
+            return
+
+        async with ctx.apply_lock:
+            applied_ok, had_error, last_diff = await self._apply_role_diffs(
+                ctx.args,
+                ctx.cfg,
+                ctx.workdir,
+                role_cfg,
+                role_results,
+                ctx.reporter,
+                ctx.apply_log_lines,
+                confirm=ctx.args.apply_confirm,
+            )
+
+        if applied_ok:
+            snapshot_result = self._snapshotter.build_snapshot(
+                ctx.workdir,
+                ctx.cfg.snapshot,
+                max_files=ctx.args.max_files,
+                max_bytes_per_file=ctx.args.max_file_bytes,
+                task=ctx.task_full,
+            )
+            snapshot_name = f"snapshot_after_{role_cfg.id}.txt"
+            write_text(ctx.run_dir / snapshot_name, snapshot_result.text)
+            async with ctx.context_lock:
+                ctx.context["snapshot"] = snapshot_result.text
+                if last_diff:
+                    ctx.context["last_applied_diff"] = last_diff
+
+        if ctx.args.fail_fast and had_error:
+            ctx.abort_run = True
+
+    def _setup_instance_context(
+        self,
+        ctx: PipelineRunContext,
+        role_cfg: RoleConfig,
+        instance_id: int,
+        shard_plan: ShardPlan | None,
+    ) -> dict:
+        """Setup context for a specific role instance."""
+        instance_label = f"{role_cfg.id}#{instance_id}"
+        local_context = dict(ctx.context)
+        local_context["role_id"] = role_cfg.id
+        local_context["role_name"] = role_cfg.name
+        local_context["role_instance_id"] = str(instance_id)
+        local_context["role_instance"] = instance_label
+
+        # Add shard-specific context if sharding is enabled
+        shard_index = instance_id - 1
+        if shard_plan and shard_index < len(shard_plan.shards):
+            shard = shard_plan.shards[shard_index]
+            local_context["task"] = shard.content
+            local_context["shard_id"] = shard.id
+            local_context["shard_title"] = shard.title
+            local_context["shard_goal"] = shard.goal
+            local_context["allowed_paths"] = ", ".join(shard.allowed_paths)
+
+        return local_context
+
+    async def _claim_instance_task(
+        self,
+        instance_label: str,
+        task_board: TaskBoard,
+        coordination_log: CoordinationLog,
+        out_file: Path,
+    ) -> None:
+        """Claim task in coordination system."""
+        await task_board.update_task(
+            instance_label,
+            {"status": "in_progress", "claimed_by": instance_label},
+        )
+        coordination_log.append(
+            instance_label,
+            "claim",
+            {"task": instance_label, "out_file": str(out_file)},
+        )
+
+    async def _finalize_instance_task(
+        self,
+        ctx: PipelineRunContext,
+        instance_label: str,
+        task_board: TaskBoard,
+        coordination_log: CoordinationLog,
+        result: AgentResult,
+    ) -> None:
+        """Finalize task in coordination system."""
+        await task_board.update_task(
+            instance_label,
+            {"status": "done", "claimed_by": instance_label, "returncode": result.returncode},
+        )
+        coordination_log.append(
+            instance_label,
+            "complete",
+            {"task": instance_label, "returncode": result.returncode},
+        )
+        async with ctx.report_lock:
+            ctx.reporter.step("Agent-Ende", f"Rolle: {instance_label}, rc={result.returncode}", advance=0)
+
+    async def _run_role(self, ctx: PipelineRunContext, role_cfg: RoleConfig) -> str:
+        """Execute a single role with all its instances."""
+        if ctx.task_board is None or ctx.coordination_log is None:
+            raise RuntimeError("Coordination not initialized")
+        task_board = ctx.task_board
+        coordination_log = ctx.coordination_log
+
+        role_start = time.monotonic()
+        ctx.json_logger.log("role_start", {"role": role_cfg.id})
+
+        # Setup sharding if enabled
+        shard_plan = await self._setup_shard_plan(ctx, role_cfg)
+
+        # Check if role should be skipped
+        if await self._check_role_skip_condition(ctx, role_cfg, task_board, coordination_log):
             return role_cfg.id
 
+        # Validate prompt template
+        if not self._validate_role_prompt(ctx, role_cfg):
+            return role_cfg.id
+
+        # Execute all role instances in parallel
         role_executor = self._build_executor(ctx.cfg, role_cfg, ctx.args.timeout)
         tasks = [
             asyncio.create_task(self._run_role_instance(ctx, role_cfg, idx, shard_plan, role_executor))
@@ -333,23 +501,11 @@ class Pipeline:
         role_results = await asyncio.gather(*tasks)
         ctx.results[role_cfg.id] = role_results
 
+        # Validate shard results if sharding was used
         if shard_plan:
-            validation_ok, validation_msg = await self._validate_shard_results(
-                role_cfg,
-                shard_plan,
-                role_results,
-                ctx.run_dir,
-                ctx.json_logger,
-            )
-            if not validation_ok:
-                async with ctx.report_lock:
-                    ctx.reporter.error(f"Shard validation failed for {role_cfg.id}: {validation_msg}")
-                if role_cfg.overlap_policy == "forbid":
-                    ctx.abort_run = True
-                elif role_cfg.overlap_policy == "warn":
-                    async with ctx.report_lock:
-                        ctx.reporter.step("Warning", f"Overlaps detected in {role_cfg.id}", advance=0)
+            await self._validate_and_handle_shards(ctx, role_cfg, shard_plan, role_results)
 
+        # Combine outputs from all instances
         summary_text = self._combine_outputs(
             role_cfg,
             role_results,
@@ -365,40 +521,10 @@ class Pipeline:
             ctx.context[f"{role_cfg.id}_summary"] = summary_text
             ctx.context[f"{role_cfg.id}_output"] = output_text
 
-        if (
-            ctx.args.apply
-            and ctx.args.apply_mode == "role"
-            and role_cfg.apply_diff
-            and role_cfg.id in ctx.apply_role_ids
-        ):
-            async with ctx.apply_lock:
-                applied_ok, had_error, last_diff = await self._apply_role_diffs(
-                    ctx.args,
-                    ctx.cfg,
-                    ctx.workdir,
-                    role_cfg,
-                    role_results,
-                    ctx.reporter,
-                    ctx.apply_log_lines,
-                    confirm=ctx.args.apply_confirm,
-                )
-            if applied_ok:
-                snapshot_result = self._snapshotter.build_snapshot(
-                    ctx.workdir,
-                    ctx.cfg.snapshot,
-                    max_files=ctx.args.max_files,
-                    max_bytes_per_file=ctx.args.max_file_bytes,
-                    task=ctx.task_full,
-                )
-                snapshot_name = f"snapshot_after_{role_cfg.id}.txt"
-                write_text(ctx.run_dir / snapshot_name, snapshot_result.text)
-                async with ctx.context_lock:
-                    ctx.context["snapshot"] = snapshot_result.text
-                    if last_diff:
-                        ctx.context["last_applied_diff"] = last_diff
-            if ctx.args.fail_fast and had_error:
-                ctx.abort_run = True
+        # Apply diffs if configured
+        await self._apply_role_diffs_if_needed(ctx, role_cfg, role_results)
 
+        # Finalize metadata
         role_end = time.monotonic()
         async with ctx.meta_lock:
             role_meta = ctx.run_meta["roles"].setdefault(role_cfg.id, {"instances": {}})
@@ -416,29 +542,19 @@ class Pipeline:
         shard_plan: ShardPlan | None,
         role_executor: AgentExecutor,
     ) -> AgentResult:
+        """Execute a single instance of a role with retry logic."""
         if ctx.task_board is None or ctx.coordination_log is None:
             raise RuntimeError("Coordination not initialized")
         task_board = ctx.task_board
         coordination_log = ctx.coordination_log
 
+        # Setup instance context
         instance_label = f"{role_cfg.id}#{instance_id}"
         agent = AgentSpec(f"{role_cfg.name}#{instance_id}", role_cfg.role)
         async with ctx.context_lock:
-            local_context = dict(ctx.context)
-        local_context["role_id"] = role_cfg.id
-        local_context["role_name"] = role_cfg.name
-        local_context["role_instance_id"] = str(instance_id)
-        local_context["role_instance"] = instance_label
+            local_context = self._setup_instance_context(ctx, role_cfg, instance_id, shard_plan)
 
-        shard_index = instance_id - 1
-        if shard_plan and shard_index < len(shard_plan.shards):
-            shard = shard_plan.shards[shard_index]
-            local_context["task"] = shard.content
-            local_context["shard_id"] = shard.id
-            local_context["shard_title"] = shard.title
-            local_context["shard_goal"] = shard.goal
-            local_context["allowed_paths"] = ", ".join(shard.allowed_paths)
-
+        # Build initial prompt
         prompt, prompt_chars, truncated, prompt_tokens, max_prompt_tokens = self._build_prompt(
             role_cfg,
             local_context,
@@ -446,16 +562,10 @@ class Pipeline:
         )
         out_file = ctx.run_dir / self._build_output_filename(ctx.cfg, role_cfg, instance_id)
 
-        await task_board.update_task(
-            instance_label,
-            {"status": "in_progress", "claimed_by": instance_label},
-        )
-        coordination_log.append(
-            instance_label,
-            "claim",
-            {"task": instance_label, "out_file": str(out_file)},
-        )
+        # Claim task in coordination system
+        await self._claim_instance_task(instance_label, task_board, coordination_log, out_file)
 
+        # Execute with retry logic
         retries_left = max(0, role_cfg.retries)
         attempt = 0
         backoff_sec = float(ctx.cfg.role_defaults.get("retry_backoff_sec", 1.0))
@@ -464,13 +574,12 @@ class Pipeline:
         while True:
             async with ctx.report_lock:
                 ctx.reporter.step("Agent-Lauf", f"Rolle: {instance_label}, attempt {attempt + 1}", advance=1)
-            res = await role_executor.run_agent(
-                agent,
-                prompt,
-                ctx.workdir,
-                out_file,
-            )
+
+            # Run agent
+            res = await role_executor.run_agent(agent, prompt, ctx.workdir, out_file)
             last_result = res
+
+            # Log result
             ctx.json_logger.log(
                 "agent_result",
                 {
@@ -485,6 +594,8 @@ class Pipeline:
                     "stderr_chars": len(res.stderr),
                 },
             )
+
+            # Update metadata
             async with ctx.meta_lock:
                 role_meta = ctx.run_meta["roles"].setdefault(role_cfg.id, {"instances": {}})
                 role_meta["instances"][instance_label] = {
@@ -496,12 +607,14 @@ class Pipeline:
                     "stderr_chars": len(res.stderr),
                     "attempts": role_cfg.retries + 1 - retries_left,
                 }
+
+            # Check if result is acceptable
             if self._output_ok(res, role_cfg):
                 break
-            if retries_left <= 0:
+            if retries_left <= 0 or not self._should_retry(res, role_cfg):
                 break
-            if not self._should_retry(res, role_cfg):
-                break
+
+            # Prepare retry with shrunk prompt
             retries_left -= 1
             attempt += 1
             shrink = ctx.cfg.role_defaults.get("retry_prompt_shrink", 0.85)
@@ -514,19 +627,12 @@ class Pipeline:
                 repair_missing=self._repair_note(role_cfg, res.stdout),
             )
             await asyncio.sleep(backoff_sec)
+
         if last_result is None:
             raise RuntimeError("Agent did not run")
-        await task_board.update_task(
-            instance_label,
-            {"status": "done", "claimed_by": instance_label, "returncode": last_result.returncode},
-        )
-        coordination_log.append(
-            instance_label,
-            "complete",
-            {"task": instance_label, "returncode": last_result.returncode},
-        )
-        async with ctx.report_lock:
-            ctx.reporter.step("Agent-Ende", f"Rolle: {instance_label}, rc={last_result.returncode}", advance=0)
+
+        # Finalize task
+        await self._finalize_instance_task(ctx, instance_label, task_board, coordination_log, last_result)
         return last_result
 
     def _apply_end_diffs(self, ctx: PipelineRunContext) -> None:
