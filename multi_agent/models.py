@@ -21,7 +21,6 @@ class RoleConfig:
     max_output_chars: int | None
     expected_sections: List[str]
     run_if_review_critical: bool
-    codex_cmd: str | None
     model: str | None
     # CLI Provider configuration
     cli_provider: str | None = None  # "codex", "claude", "gemini" - defaults to global default
@@ -44,8 +43,6 @@ class AppConfig:
     final_role_id: str
     summary_max_chars: int
     final_summary_max_chars: int
-    codex_env_var: str
-    codex_default_cmd: str
     paths: Dict[str, str]
     coordination: Dict[str, object]
     outputs: Dict[str, object]

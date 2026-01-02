@@ -116,7 +116,3 @@ class AgentExecutor:
         write_text(out_file, content)
         print(f"[Agent-Ende] {agent.name} rc={rc}")
         return AgentResult(agent=agent, returncode=rc, stdout=out, stderr=err, out_file=out_file)
-
-
-# Backwards compatibility alias (deprecated)
-CodexClient = CLIClient

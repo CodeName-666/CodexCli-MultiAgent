@@ -2,9 +2,7 @@
 """
 multi_role_agent_creator.py - create a new role JSON and register it in a main config.
 
-Enhanced with Natural Language mode similar to multi_family_creator.py:
-- Original mode: All details via CLI flags (backwards compatible)
-- Natural Language mode: Describe role, Codex generates details
+Uses Natural Language mode to generate role specifications via LLM.
 """
 
 from __future__ import annotations
@@ -20,148 +18,133 @@ from typing import Dict, List, Tuple
 # Add parent directory to path so we can import multi_agent modules
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from multi_agent.utils import get_codex_cmd, parse_cmd
+from multi_agent.cli_adapter import CLIAdapter
+from multi_agent.common_utils import load_json, write_json, deep_merge, slugify
+from multi_agent.utils import parse_cmd
 
-# Import from legacy (original implementation) - now in same directory
-try:
-    from creators.multi_role_agent_creator_legacy import (
-        load_json,
-        load_config_with_defaults,
-        deep_merge,
-        write_json,
-        slugify,
-        parse_context_entries,
-        build_prompt_template,
-        build_description_optimization_prompt,
-        optimize_description,
-        resolve_role_path,
-        insert_role_entry,
-        normalize_sections,
-        normalize_rule_lines,
-        format_has_diff_block,
-        normalize_expected_section,
-        build_expected_sections,
-        DEFAULT_CONFIG_PATH,
-        DEFAULT_FORMAT_SECTIONS,
-        DEFAULT_RULE_LINES,
-        DEFAULT_DIFF_TEXT,
-        DEFAULT_OPTIMIZE_TIMEOUT_SEC,
-        main as legacy_main,
-    )
-except ImportError:
-    # Fallback: define essential functions inline
-    DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent.parent / "agent_families" / "developer_main.json"
-    DEFAULT_FORMAT_SECTIONS = ["- Aufgaben:", "- Entscheidungen:", "- Offene Punkte:"]
-    DEFAULT_RULE_LINES = [
-        "Ausgabe muss exakt diese Abschnittsmarker enthalten.",
-        "Wenn FEHLENDE SEKTIONEN angegeben sind, korrigiere das Format.",
-    ]
-    DEFAULT_DIFF_TEXT = "Dann liefere einen UNIFIED DIFF (git-style) für alle Änderungen:"
-    DEFAULT_OPTIMIZE_TIMEOUT_SEC = 120
+# Constants
+DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent.parent / "agent_families" / "developer_main.json"
+DEFAULT_FORMAT_SECTIONS = ["- Aufgaben:", "- Entscheidungen:", "- Offene Punkte:"]
+DEFAULT_RULE_LINES = [
+    "Ausgabe muss exakt diese Abschnittsmarker enthalten.",
+    "Wenn FEHLENDE SEKTIONEN angegeben sind, korrigiere das Format.",
+]
+DEFAULT_DIFF_TEXT = "Dann liefere einen UNIFIED DIFF (git-style) für alle Änderungen:"
 
-    def load_json(path: Path) -> Dict[str, object]:
-        return json.loads(path.read_text(encoding="utf-8"))
 
-    def write_json(path: Path, data: Dict[str, object]) -> None:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+def load_config_with_defaults(config_path: Path) -> Dict[str, object]:
+    """
+    Load config with defaults.json merge support.
 
-    def slugify(text: str) -> str:
-        text = text.strip().lower()
-        text = re.sub(r"[^a-z0-9]+", "_", text)
-        return text.strip("_")
+    Requires defaults.json in static_config/ directory.
+    Family config values override defaults.
+    """
+    static_config_dir = config_path.parent.parent / "static_config"
+    defaults_path = static_config_dir / "defaults.json"
 
-    def resolve_role_path(base_dir: Path, role_file: str) -> Tuple[Path, str]:
-        raw_path = Path(role_file)
-        if raw_path.is_absolute():
-            file_path = raw_path
-            try:
-                rel_path = str(file_path.relative_to(base_dir))
-            except ValueError:
-                rel_path = str(file_path)
-        else:
-            file_path = base_dir / raw_path
-            rel_path = str(raw_path)
-        return file_path, rel_path.replace("\\", "/")
+    if not defaults_path.exists():
+        raise FileNotFoundError(
+            f"defaults.json not found at {defaults_path}. "
+            "Please ensure static_config/defaults.json exists."
+        )
 
-    def insert_role_entry(
-        roles: List[Dict[str, object]],
-        entry: Dict[str, object],
-        insert_after: str | None,
-        final_role_id: str | None,
-    ) -> List[Dict[str, object]]:
-        if insert_after:
-            for idx, role in enumerate(roles):
-                if role.get("id") == insert_after:
-                    return roles[: idx + 1] + [entry] + roles[idx + 1 :]
-            raise ValueError(f"insert-after role id not found: {insert_after}")
-        if final_role_id:
-            for idx, role in enumerate(roles):
-                if role.get("id") == final_role_id:
-                    return roles[:idx] + [entry] + roles[idx:]
-        return roles + [entry]
+    defaults = load_json(defaults_path)
+    family_config = load_json(config_path)
+    return deep_merge(defaults, family_config)
 
-    def build_prompt_template(
-        title: str,
-        description: str,
-        context_entries: List[Tuple[str, str]],
-        format_sections: List[str],
-        rule_lines: List[str],
-        include_diff_instructions: bool,
-        diff_text: str,
-        include_description: bool,
-        include_last_applied_diff: bool,
-        include_coordination: bool,
-        include_snapshot: bool,
-    ) -> str:
-        safe_title = title.replace("{", "{{").replace("}", "}}")
-        safe_description = description.replace("{", "{{").replace("}", "}}")
-        lines: List[str] = []
-        lines.append("FORMAT (STRICT):")
-        lines.append(f"# {safe_title}")
-        lines.extend(format_sections)
-        if include_diff_instructions:
-            safe_diff_text = diff_text.replace("{", "{{").replace("}", "}}").strip()
-            lines.append("")
-            lines.append(safe_diff_text or DEFAULT_DIFF_TEXT)
-            lines.append("```diff")
-            lines.append("diff --git a/<path> b/<path>")
-            lines.append("...")
-            lines.append("```")
+
+def resolve_role_path(base_dir: Path, role_file: str) -> Tuple[Path, str]:
+    """Resolve role file path to absolute and relative paths."""
+    raw_path = Path(role_file)
+    if raw_path.is_absolute():
+        file_path = raw_path
+        try:
+            rel_path = str(file_path.relative_to(base_dir))
+        except ValueError:
+            rel_path = str(file_path)
+    else:
+        file_path = base_dir / raw_path
+        rel_path = str(raw_path)
+    return file_path, rel_path.replace("\\", "/")
+
+
+def insert_role_entry(
+    roles: List[Dict[str, object]],
+    entry: Dict[str, object],
+    insert_after: str | None,
+    final_role_id: str | None,
+) -> List[Dict[str, object]]:
+    """Insert role entry into roles list at appropriate position."""
+    if insert_after:
+        for idx, role in enumerate(roles):
+            if role.get("id") == insert_after:
+                return roles[: idx + 1] + [entry] + roles[idx + 1 :]
+        raise ValueError(f"insert-after role id not found: {insert_after}")
+    if final_role_id:
+        for idx, role in enumerate(roles):
+            if role.get("id") == final_role_id:
+                return roles[:idx] + [entry] + roles[idx:]
+    return roles + [entry]
+
+
+def build_prompt_template(
+    title: str,
+    description: str,
+    context_entries: List[Tuple[str, str]],
+    format_sections: List[str],
+    rule_lines: List[str],
+    include_diff_instructions: bool,
+    diff_text: str,
+    include_description: bool,
+    include_last_applied_diff: bool,
+    include_coordination: bool,
+    include_snapshot: bool,
+) -> str:
+    """Build prompt template from role specification."""
+    safe_title = title.replace("{", "{{").replace("}", "}}")
+    safe_description = description.replace("{", "{{").replace("}", "}}")
+    lines: List[str] = []
+    lines.append("FORMAT (STRICT):")
+    lines.append(f"# {safe_title}")
+    lines.extend(format_sections)
+    if include_diff_instructions:
+        safe_diff_text = diff_text.replace("{", "{{").replace("}", "}}").strip()
         lines.append("")
-        lines.append("REGELN:")
-        lines.extend(rule_lines)
-        lines.append("{repair_note}")
-        if include_description:
-            lines.append("")
-            lines.append("BESCHREIBUNG:")
-            lines.append(safe_description.strip())
+        lines.append(safe_diff_text or DEFAULT_DIFF_TEXT)
+        lines.append("```diff")
+        lines.append("diff --git a/<path> b/<path>")
+        lines.append("...")
+        lines.append("```")
+    lines.append("")
+    lines.append("REGELN:")
+    lines.extend(rule_lines)
+    lines.append("{repair_note}")
+    if include_description:
         lines.append("")
-        lines.append("AUFGABE:")
-        lines.append("{task}")
-        for key, label in context_entries:
-            safe_label = label.replace("{", "{{").replace("}", "}}")
-            lines.append("")
-            lines.append(f"{safe_label}:")
-            lines.append(f"{{{key}}}")
-        if include_last_applied_diff:
-            lines.append("")
-            lines.append("LAST APPLIED DIFF (optional):")
-            lines.append("{last_applied_diff}")
-        if include_coordination:
-            lines.append("")
-            lines.append("KOORDINATION (Task-Board & Log):")
-            lines.append("Task-Board: {task_board_path}")
-            lines.append("Log: {coordination_log_path}")
-        if include_snapshot:
-            lines.append("")
-            lines.append("KONTEXT (Workspace Snapshot):")
-            lines.append("{snapshot}")
-        return "\n".join(lines) + "\n"
-
-    def legacy_main():
-        print("Legacy mode not available - please use original multi_role_agent_creator_legacy.py", file=sys.stderr)
-        sys.exit(1)
+        lines.append("BESCHREIBUNG:")
+        lines.append(safe_description.strip())
+    lines.append("")
+    lines.append("AUFGABE:")
+    lines.append("{task}")
+    for key, label in context_entries:
+        safe_label = label.replace("{", "{{").replace("}", "}}")
+        lines.append("")
+        lines.append(f"{safe_label}:")
+        lines.append(f"{{{key}}}")
+    if include_last_applied_diff:
+        lines.append("")
+        lines.append("LAST APPLIED DIFF (optional):")
+        lines.append("{last_applied_diff}")
+    if include_coordination:
+        lines.append("")
+        lines.append("KOORDINATION (Task-Board & Log):")
+        lines.append("Task-Board: {task_board_path}")
+        lines.append("Log: {coordination_log_path}")
+    if include_snapshot:
+        lines.append("")
+        lines.append("KONTEXT (Workspace Snapshot):")
+        lines.append("{snapshot}")
+    return "\n".join(lines) + "\n"
 
 
 def build_role_spec_prompt(
@@ -344,14 +327,15 @@ def generate_role_spec_via_codex(
         extra_instructions=args.extra_instructions or "",
     )
 
-    # Get Codex command
+    # Get CLI command via CLIAdapter
     if args.codex_cmd_override:
         codex_cmd = parse_cmd(args.codex_cmd_override)
     else:
-        codex_cfg = config.get("codex") or {}
-        env_var = str(codex_cfg.get("env_var") or "CODEX_CMD")
-        default_cmd = str(codex_cfg.get("default_cmd") or "codex exec -")
-        codex_cmd = get_codex_cmd(env_var, default_cmd)
+        static_config_dir = Path(__file__).parent.parent / "static_config"
+        cli_adapter = CLIAdapter(static_config_dir / "cli_config.json")
+        codex_cmd, _, _ = cli_adapter.build_command_for_role(
+            provider_id=None, prompt=None, model=None, timeout_sec=None
+        )
 
     # Call Codex
     stdout = call_codex(prompt, codex_cmd, args.nl_timeout_sec)
@@ -368,17 +352,15 @@ def generate_role_spec_via_codex(
 
 
 def parse_args(argv: List[str] | None = None) -> argparse.Namespace:
-    """Parse command-line arguments with Natural Language mode."""
+    """Parse command-line arguments for Natural Language mode."""
     p = argparse.ArgumentParser(
         description="Create a new role JSON and update a main config file.\n\n"
-                    "Two modes:\n"
-                    "1. LEGACY MODE: Use --description with all details via flags\n"
-                    "2. NATURAL LANGUAGE MODE: Use --nl-description for automatic generation",
+                    "Uses Natural Language mode to automatically generate role specifications via LLM.",
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
 
-    # === NATURAL LANGUAGE MODE (NEW) ===
-    nl_group = p.add_argument_group("Natural Language Mode (NEW - similar to family creator)")
+    # === NATURAL LANGUAGE MODE ===
+    nl_group = p.add_argument_group("Natural Language Mode")
     nl_group.add_argument(
         "--nl-description",
         help="Natural language description of the role (e.g., 'A code reviewer that checks for bugs'). "
@@ -410,48 +392,8 @@ def parse_args(argv: List[str] | None = None) -> argparse.Namespace:
         help="Show generated spec without writing files"
     )
 
-    # === LEGACY MODE (ORIGINAL) ===
-    legacy_group = p.add_argument_group("Legacy Mode (original - full manual control)")
-    legacy_group.add_argument(
-        "--description",
-        help="Role description used to build the prompt template (LEGACY)"
-    )
-    legacy_group.add_argument("--id", dest="role_id", help="Role id (default: slugified description).")
-    legacy_group.add_argument("--name", help="Role name (default: id).")
-    legacy_group.add_argument("--role", dest="role_label", help="Role label (default: name).")
-    legacy_group.add_argument("--title", help="Title used in the prompt header (default: role label).")
-    legacy_group.add_argument(
-        "--section",
-        action="append",
-        default=[],
-        help="Section line in the FORMAT block (repeatable). Defaults to a generic 3-section list.",
-    )
-    legacy_group.add_argument(
-        "--expected-section",
-        action="append",
-        default=[],
-        help="Expected section marker (repeatable). Overrides auto-generated expected sections.",
-    )
-    legacy_group.add_argument(
-        "--context",
-        action="append",
-        default=[],
-        help="Extra placeholders to include (key or key:Label). Example: --context architect_summary:ARCH (Kurz).",
-    )
-    legacy_group.add_argument(
-        "--rule",
-        action="append",
-        default=[],
-        help="Rule line in the REGELN block (repeatable). Defaults to standard rule lines.",
-    )
-    legacy_group.add_argument(
-        "--replace-rules",
-        action="store_true",
-        help="Use only the provided --rule lines (skip the defaults).",
-    )
-
     # === COMMON OPTIONS ===
-    common_group = p.add_argument_group("Common options (apply to both modes)")
+    common_group = p.add_argument_group("Common options")
     common_group.add_argument("--file", dest="role_file", help="Role file path relative to agent_families/ (default: <family>_agents/<id>.json).")
     common_group.add_argument("--apply-diff", action="store_true", help="Mark role as producing a diff to auto-apply.")
     common_group.add_argument("--diff-text", help="Custom diff instruction line for the prompt template.")
@@ -472,32 +414,6 @@ def parse_args(argv: List[str] | None = None) -> argparse.Namespace:
     common_group.add_argument("--codex-cmd", help="Override Codex command for this role.")
     common_group.add_argument("--model", help="Model override for this role.")
     common_group.add_argument("--run-if-review-critical", action="store_true", help="Run only if review is critical.")
-
-    # === DESCRIPTION OPTIMIZATION (LEGACY) ===
-    opt_group = p.add_argument_group("Description optimization (legacy mode)")
-    opt_group.add_argument(
-        "--optimize-description",
-        action="store_true",
-        help="Optimize role description via Codex CLI before creating the role.",
-    )
-    opt_group.add_argument("--optimize-instructions", help="Optional extra instructions for description optimization.")
-    opt_group.add_argument(
-        "--optimize-timeout-sec",
-        type=int,
-        default=DEFAULT_OPTIMIZE_TIMEOUT_SEC,
-        help="Timeout for description optimization via Codex CLI.",
-    )
-    opt_group.add_argument("--optimize-codex-cmd", help="Override Codex CLI command for description optimization.")
-
-    desc_group = p.add_mutually_exclusive_group()
-    desc_group.add_argument("--description-block", dest="description_block", action="store_true")
-    desc_group.add_argument("--no-description-block", dest="description_block", action="store_false")
-    p.set_defaults(description_block=False)
-
-    p.add_argument("--no-last-applied-diff", action="store_true", help="Skip the last applied diff block.")
-    p.add_argument("--no-coordination", action="store_true", help="Skip the coordination block.")
-    p.add_argument("--no-snapshot", action="store_true", help="Skip the workspace snapshot block.")
-    p.add_argument("--no-expected-diff", action="store_true", help="Remove ```diff from expected sections.")
 
     # === CONFIG & OUTPUT ===
     p.add_argument("--config", default=str(DEFAULT_CONFIG_PATH), help="Path to main config (e.g. agent_families/developer_main.json).")
@@ -654,26 +570,14 @@ def main() -> None:
         print(f"Error: invalid config JSON: {exc}", file=sys.stderr)
         sys.exit(2)
 
-    # MODE DETECTION
-    if args.nl_description:
-        # Natural Language Mode (NEW)
-        main_natural_language(args, cfg, config_path)
-    elif args.description:
-        # Legacy Mode (ORIGINAL) - import and call original main logic
-        print("Legacy-Modus: Nutze Original-Implementierung...")
-        # This would call the original implementation
-        # For now, just inform user to use original tool
-        print("Hinweis: Für den Legacy-Modus nutze bitte das Original-Tool:", file=sys.stderr)
-        print("  python multi_role_agent_creator.py --description '...' [options]", file=sys.stderr)
+    # Natural Language Mode
+    if not args.nl_description:
+        print("Fehler: --nl-description ist erforderlich", file=sys.stderr)
+        print("\nBeispiel:", file=sys.stderr)
+        print("  python multi_role_agent_creator.py --nl-description 'Ein Code Reviewer der auf Bugs prüft'", file=sys.stderr)
         sys.exit(1)
-    else:
-        print("Fehler: Entweder --nl-description (Natural Language) oder --description (Legacy) erforderlich", file=sys.stderr)
-        print("\nBeispiele:", file=sys.stderr)
-        print("  # Natural Language:", file=sys.stderr)
-        print("  python multi_role_agent_creator_v2.py --nl-description 'Ein Code Reviewer der auf Bugs prüft'", file=sys.stderr)
-        print("\n  # Legacy:", file=sys.stderr)
-        print("  python multi_role_agent_creator.py --description 'Code Reviewer' --section '- Findings:' [...]", file=sys.stderr)
-        sys.exit(1)
+
+    main_natural_language(args, cfg, config_path)
 
 
 if __name__ == "__main__":

@@ -69,9 +69,8 @@ Codex_CLI_Agent/
 │   └── ...                          # Weitere Core-Module
 │
 ├── creators/                         # Tools zur Config-Generierung
-│   ├── multi_family_creator.py      # Erstellt komplette Agent-Familien
-│   ├── multi_role_agent_creator.py  # Erstellt einzelne Agent-Rollen
-│   └── multi_role_agent_creator_legacy.py
+│   ├── multi_family_creator.py      # Erstellt komplette Agent-Familien via Natural Language
+│   └── multi_role_agent_creator.py  # Erstellt einzelne Agent-Rollen via Natural Language
 │
 ├── docs/                             # Dokumentation
 │   ├── QUICKSTART.md                # Schnellstart-Anleitung

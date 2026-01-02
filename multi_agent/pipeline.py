@@ -20,14 +20,11 @@ from .sharding import create_shard_plan, save_shard_plan
 from .snapshot import BaseSnapshotter, WorkspaceSnapshotter
 from .utils import (
     extract_error_reason,
-    detect_model_from_cmd,
     estimate_tokens,
     format_prompt,
-    get_codex_cmd,
     get_status_text,
     normalize_output_text,
     now_stamp,
-    parse_cmd,
     summarize_text,
     truncate_text,
     validate_output_sections,
@@ -746,9 +743,6 @@ class Pipeline:
         max_prompt_tokens = role_cfg.max_prompt_tokens or int(cfg.role_defaults.get("max_prompt_tokens", 0) or 0)
         if max_prompt_tokens <= 0:
             model_name = role_cfg.model or ""
-            if not model_name:
-                cmd = parse_cmd(role_cfg.codex_cmd) if role_cfg.codex_cmd else get_codex_cmd(cfg.codex_env_var, cfg.codex_default_cmd)
-                model_name = detect_model_from_cmd(cmd)
             model_max_tokens = (prompt_limits.get("model_max_tokens") or {}).get(model_name)
             if model_max_tokens is not None:
                 max_prompt_tokens = int(model_max_tokens)
@@ -837,73 +831,38 @@ class Pipeline:
     @staticmethod
     def _build_executor(cfg: AppConfig, role_cfg: RoleConfig, default_timeout: int) -> AgentExecutor:
         """
-        Build executor for a role, supporting multiple CLI providers.
+        Build executor for a role using CLIAdapter.
 
-        Priority:
-        1. Role-specific codex_cmd (legacy support)
-        2. Role-specific cli_provider + cli_parameters
-        3. Global default (codex)
+        All CLI providers (codex, claude, gemini) are configured via cli_config.json.
+        The role can specify cli_provider, model, and cli_parameters.
         """
         timeout_sec = role_cfg.timeout_sec or int(default_timeout)
         if timeout_sec <= 0:
             timeout_sec = int(cfg.role_defaults.get("timeout_sec", 1200))
 
-        # Legacy support: role-specific codex_cmd
-        if role_cfg.codex_cmd:
-            cmd = parse_cmd(role_cfg.codex_cmd)
-            client = CLIClient(cmd, timeout_sec=timeout_sec, stdin_mode=True)
-            return AgentExecutor(client, cfg.agent_output, cfg.messages)
-
-        # New multi-provider support
-        if role_cfg.cli_provider and cfg.cli_providers:
-            try:
-                # Initialize CLI adapter (lazy init, will create default if missing)
-                static_config_dir = Path(__file__).parent.parent / "static_config"
-                cli_config_path = static_config_dir / "cli_config.json"
-                cli_adapter = CLIAdapter(cli_config_path)
-
-                # Build command using adapter
-                cmd, stdin_content, multiplier = cli_adapter.build_command_for_role(
-                    provider_id=role_cfg.cli_provider,
-                    prompt=None,  # Will be provided later in run_agent
-                    model=role_cfg.model,
-                    timeout_sec=timeout_sec,
-                    custom_params=role_cfg.cli_parameters or {}
-                )
-
-                # Apply timeout multiplier
-                adjusted_timeout = int(timeout_sec * multiplier)
-
-                # Determine if we need stdin mode
-                stdin_mode = stdin_content is not None or cli_adapter.get_provider(role_cfg.cli_provider).input_mode != "flag"
-
-                client = CLIClient(cmd, timeout_sec=adjusted_timeout, stdin_mode=stdin_mode)
-                return AgentExecutor(client, cfg.agent_output, cfg.messages)
-
-            except Exception as e:
-                # Fallback to default if provider config fails
-                print(f"Warning: Failed to load CLI provider '{role_cfg.cli_provider}': {e}")
-                print("Falling back to default Codex CLI...")
-
-        # Default: use global codex config via CLI adapter
+        # Load CLI adapter (single source of truth for all providers)
         static_config_dir = Path(__file__).parent.parent / "static_config"
         cli_config_path = static_config_dir / "cli_config.json"
-        try:
-            cli_adapter = CLIAdapter(cli_config_path)
-            cmd, stdin_content, multiplier = cli_adapter.build_command_for_role(
-                provider_id=None,  # Uses default provider
-                prompt=None,
-                model=role_cfg.model,
-                timeout_sec=timeout_sec,
-                custom_params=role_cfg.cli_parameters or {}
-            )
-            adjusted_timeout = int(timeout_sec * multiplier)
-            stdin_mode = stdin_content is not None or cli_adapter.get_provider(None).input_mode != "flag"
-            client = CLIClient(cmd, timeout_sec=adjusted_timeout, stdin_mode=stdin_mode)
-        except Exception:
-            # Ultimate fallback: legacy codex command
-            cmd = get_codex_cmd(cfg.codex_env_var, cfg.codex_default_cmd)
-            client = CLIClient(cmd, timeout_sec=timeout_sec, stdin_mode=True)
+        cli_adapter = CLIAdapter(cli_config_path)
+
+        # Determine provider: role-specific or default
+        provider_id = role_cfg.cli_provider  # None means use default from cli_config.json
+
+        # Build command
+        cmd, stdin_content, multiplier = cli_adapter.build_command_for_role(
+            provider_id=provider_id,
+            prompt=None,  # Prompt provided later in run_agent
+            model=role_cfg.model,
+            timeout_sec=timeout_sec,
+            custom_params=role_cfg.cli_parameters or {}
+        )
+
+        # Apply timeout multiplier and determine stdin mode
+        adjusted_timeout = int(timeout_sec * multiplier)
+        provider = cli_adapter.get_provider(provider_id)
+        stdin_mode = stdin_content is not None or provider.input_mode != "flag"
+
+        client = CLIClient(cmd, timeout_sec=adjusted_timeout, stdin_mode=stdin_mode)
         return AgentExecutor(client, cfg.agent_output, cfg.messages)
 
     @staticmethod

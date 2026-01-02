@@ -4,7 +4,6 @@
   "required": [
     "system_rules",
     "roles",
-    "codex",
     "paths",
     "snapshot",
     "agent_output",
@@ -21,16 +20,29 @@
         "required": ["id", "file"],
         "properties": {
           "id": {"type": "string"},
-          "file": {"type": "string"}
+          "file": {"type": "string"},
+          "cli_provider": {
+            "type": "string",
+            "description": "CLI provider to use: codex, claude, or gemini"
+          },
+          "model": {
+            "type": "string",
+            "description": "Model to use (provider-specific)"
+          },
+          "cli_parameters": {
+            "type": "object",
+            "description": "Provider-specific CLI parameters"
+          }
         }
       }
     },
-    "codex": {
+    "role_defaults": {
       "type": "object",
-      "required": ["env_var", "default_cmd"],
       "properties": {
-        "env_var": {"type": "string"},
-        "default_cmd": {"type": "string"}
+        "cli_provider": {
+          "type": "string",
+          "description": "Default CLI provider for all roles"
+        }
       }
     },
     "paths": {"type": "object"},

@@ -296,27 +296,20 @@ export GEMINI_CMD="gemini -p"
 
 Das System wählt CLI-Provider in dieser Reihenfolge:
 
-1. **Role-specific `codex_cmd`** (Legacy, höchste Priorität)
-   ```json
-   {"codex_cmd": "/custom/path/to/codex"}
-   ```
-
-2. **Role-specific `cli_provider`**
+1. **Role-specific `cli_provider`**
    ```json
    {"cli_provider": "claude", "model": "sonnet"}
    ```
 
-3. **Role defaults `cli_provider`**
+2. **Role defaults `cli_provider`**
    ```json
    {"role_defaults": {"cli_provider": "claude"}}
    ```
 
-4. **Global default** (aus `cli_config.json`)
+3. **Global default** (aus `cli_config.json`)
    ```json
    {"default_provider": "codex"}
    ```
-
-5. **Fallback** (Codex)
 
 ## Kostenoptimierung
 
@@ -412,34 +405,6 @@ claude -p "test" --max-turns 3 --output-format text
 ```
 
 Siehe `cli_config.json` für verfügbare Parameter.
-
-## Migration von Legacy Config
-
-### Vorher (alt)
-
-```json
-{
-  "id": "architect",
-  "file": "developer_agents/architect.json",
-  "codex_cmd": "/path/to/claude -p"
-}
-```
-
-### Nachher (neu)
-
-```json
-{
-  "id": "architect",
-  "file": "developer_agents/architect.json",
-  "cli_provider": "claude",
-  "model": "sonnet",
-  "cli_parameters": {
-    "max_turns": 3
-  }
-}
-```
-
-**Wichtig**: `codex_cmd` wird weiterhin unterstützt (Backwards compatibility).
 
 ## Beispiele
 

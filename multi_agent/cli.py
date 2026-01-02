@@ -25,7 +25,8 @@ from .task_split import (
     split_task_markdown,
     write_base_chunks,
 )
-from .utils import get_codex_cmd, now_stamp, parse_cmd, summarize_text
+from .cli_adapter import CLIAdapter
+from .utils import now_stamp, parse_cmd, summarize_text
 
 # Import creator modules for subcommands
 try:
@@ -118,7 +119,16 @@ async def _run_split(pipeline, args: argparse.Namespace, cfg) -> int:
             if raw_cmd:
                 codex_cmd = parse_cmd(raw_cmd)
             else:
-                codex_cmd = get_codex_cmd(cfg.codex_env_var, cfg.codex_default_cmd)
+                # Use CLIAdapter to get default provider command
+                static_config_dir = Path(__file__).parent.parent / "static_config"
+                cli_config_path = static_config_dir / "cli_config.json"
+                cli_adapter = CLIAdapter(cli_config_path)
+                codex_cmd, _, _ = cli_adapter.build_command_for_role(
+                    provider_id=None,  # Use default provider
+                    prompt=None,
+                    model=None,
+                    timeout_sec=timeout_sec,
+                )
             plan = plan_chunks_with_llm(headings, codex_cmd, timeout_sec, max_headings)
             chunks = build_chunks_from_plan(task_text, headings, plan)
         if not chunks:
@@ -522,9 +532,9 @@ def main() -> None:
         print("=" * 60)
         print("\nDieses CLI bietet mehrere Funktionen zum Arbeiten mit Multi-Agent-Systemen.\n")
         print("Verwendung:")
-        print("  multi_agent_codex                                         # Interaktiver Modus (NEU!)")
+        print("  multi_agent_codex                                         # Interaktiver Modus")
         print("  multi_agent_codex run                                     # Interaktiver Modus (explizit)")
-        print("  multi_agent_codex --task <description> [options]          # Rückwärtskompatibel")
+        print("  multi_agent_codex task --task <description> [options]     # Task-Modus")
         print("  multi_agent_codex create-family --description <text> [...] ")
         print("  multi_agent_codex create-role --nl-description <text> [...]\n")
         print("Unterkommandos:")
@@ -548,13 +558,9 @@ def main() -> None:
         print("  # Rolle erstellen")
         print("  multi_agent_codex create-role --nl-description \"Ein Code Reviewer\"")
         print("")
-        print("  # Task ausführen (direkt, rückwärtskompatibel)")
-        print("  multi_agent_codex --task \"Implementiere Feature X\" --apply")
+        print("  # Task ausführen")
+        print("  multi_agent_codex task --task \"Implementiere Feature X\" --apply")
         sys.exit(0)
-
-    # Check if --task is provided (backwards compatibility)
-    elif '--task' in sys.argv:
-        main_task()
 
     # Default: interactive mode if no arguments or only non-subcommand flags
     else:

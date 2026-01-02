@@ -50,15 +50,14 @@ python multi_agent_codex.py create-family --description "Team für X" [optionen]
 # Rolle erstellen (integriert in Haupt-CLI)
 python multi_agent_codex.py create-role --nl-description "Agent für Y" [optionen]
 
-# Standard-Task ausführen (rückwärtskompatibel)
-python multi_agent_codex.py --task "Aufgabe" --apply
+# Standard-Task ausführen
+python multi_agent_codex.py task --task "Aufgabe" --apply
 ```
 
 **Creator-Tools (eigenständig):**
 - **[creators/multi_family_creator.py](creators/multi_family_creator.py)** - Erstelle komplette Familien aus Natural Language
-- **[creators/multi_role_agent_creator.py](creators/multi_role_agent_creator.py)** - Erstelle einzelne Rollen (Natural Language Mode)
+- **[creators/multi_role_agent_creator.py](creators/multi_role_agent_creator.py)** - Erstelle einzelne Rollen via Natural Language
   - **[Natural Language Mode](docs/ROLE_CREATOR_NL.md)** - Rollen via Beschreibung erstellen
-  - **[Legacy Mode](creators/multi_role_agent_creator_legacy.py)** - Manuelle Detail-Kontrolle
 
 Die Creator-Tools können weiterhin eigenständig verwendet werden:
 ```bash

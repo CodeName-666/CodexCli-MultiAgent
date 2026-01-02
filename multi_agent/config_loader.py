@@ -1,25 +1,10 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Dict
 
+from .common_utils import load_json, deep_merge
 from .models import AppConfig, RoleConfig
-
-
-def load_json(path: Path) -> Dict[str, object]:
-    return json.loads(path.read_text(encoding="utf-8"))
-
-
-def deep_merge(base: Dict[str, object], override: Dict[str, object]) -> Dict[str, object]:
-    """Deep merge two dictionaries, override wins conflicts."""
-    result = base.copy()
-    for key, value in override.items():
-        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
-            result[key] = deep_merge(result[key], value)
-        else:
-            result[key] = value
-    return result
 
 
 def _coerce_str_list(value: object) -> list[str]:
@@ -75,12 +60,11 @@ def load_role_config(
         max_prompt_chars=int(max_prompt_chars) if max_prompt_chars is not None else None,
         max_prompt_tokens=int(max_prompt_tokens) if max_prompt_tokens is not None else None,
         retries=max(0, int(retries)),
-        codex_cmd=str(role_entry.get("codex_cmd")) if role_entry.get("codex_cmd") else None,
+        expected_sections=_coerce_str_list(role_entry.get("expected_sections")),
+        run_if_review_critical=bool(role_entry.get("run_if_review_critical", False)),
         model=str(role_entry.get("model")) if role_entry.get("model") else None,
         cli_provider=str(cli_provider) if cli_provider else None,
         cli_parameters=cli_parameters,
-        expected_sections=_coerce_str_list(role_entry.get("expected_sections")),
-        run_if_review_critical=bool(role_entry.get("run_if_review_critical", False)),
         # Sharding fields
         shard_mode=str(shard_mode),
         shard_count=int(shard_count) if shard_count is not None else None,
@@ -106,14 +90,15 @@ def load_app_config(config_path: Path) -> AppConfig:
     defaults_path = static_config_dir / "defaults.json"
     cli_config_path = static_config_dir / "cli_config.json"
 
-    # Load defaults if available
-    if defaults_path.exists():
-        defaults = load_json(defaults_path)
-        family_config = load_json(config_path)
-        data = deep_merge(defaults, family_config)
-    else:
-        # Fallback: old behavior (backwards compatible)
-        data = load_json(config_path)
+    # Load defaults and family config
+    if not defaults_path.exists():
+        raise FileNotFoundError(
+            f"defaults.json not found at {defaults_path}. "
+            "Please ensure static_config/defaults.json exists."
+        )
+    defaults = load_json(defaults_path)
+    family_config = load_json(config_path)
+    data = deep_merge(defaults, family_config)
 
     # Load CLI provider config if available
     cli_providers = {}
@@ -128,14 +113,13 @@ def load_app_config(config_path: Path) -> AppConfig:
     outputs = data.get("outputs") or {}
     task_limits = data.get("task_limits") or {}
     task_split = data.get("task_split") or {}
+
     return AppConfig(
         system_rules=str(data["system_rules"]),
         roles=roles,
         final_role_id=final_role_id,
         summary_max_chars=int(data.get("summary_max_chars", 1400)),
         final_summary_max_chars=int(data.get("final_summary_max_chars", 2400)),
-        codex_env_var=str(data["codex"]["env_var"]),
-        codex_default_cmd=str(data["codex"]["default_cmd"]),
         paths=data["paths"],
         coordination=coordination,
         outputs=outputs,

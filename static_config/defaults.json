@@ -2,10 +2,6 @@
   "system_rules": "Du bist ein separater Agent in einem Multi-Agent-Workflow, der via Codex CLI ausgeführt wird.\n\nWichtige Regeln:\n- Antworte strikt im geforderten FORMAT.\n- Keine unnötigen Erklärungen außerhalb des Formats.\n- Sei präzise, umsetzungsorientiert und konsistent.\n- Wenn du Annahmen triffst, liste sie.\n",
   "summary_max_chars": 1400,
   "final_summary_max_chars": 2400,
-  "codex": {
-    "env_var": "CODEX_CMD",
-    "default_cmd": "codex exec -"
-  },
   "role_defaults": {
     "timeout_sec": 1200,
     "max_output_chars": 20000,
