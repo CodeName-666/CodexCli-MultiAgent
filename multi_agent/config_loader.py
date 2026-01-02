@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Dict
 
 from .common_utils import load_json, deep_merge
+from .constants import get_static_config_dir
 from .models import AppConfig, RoleConfig
 
 
@@ -86,7 +87,7 @@ def load_app_config(config_path: Path) -> AppConfig:
     """
     base_dir = config_path.parent
     # Static configs are in static_config/ directory
-    static_config_dir = base_dir.parent / "static_config"
+    static_config_dir = get_static_config_dir()
     defaults_path = static_config_dir / "defaults.json"
     cli_config_path = static_config_dir / "cli_config.json"
 

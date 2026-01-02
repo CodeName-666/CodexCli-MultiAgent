@@ -26,6 +26,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 # Import common utilities
 from multi_agent.common_utils import load_json, write_json, deep_merge, slugify
+from multi_agent.constants import get_static_config_dir
+from creators.codex_client import call_codex, extract_json_from_markdown
 
 # Import from multi_role_agent_creator
 from creators.multi_role_agent_creator import (
@@ -571,8 +573,7 @@ class FamilyCreator:
         if args.codex_cmd:
             self.codex_cmd = parse_cmd(args.codex_cmd)
         else:
-            static_config_dir = Path(__file__).parent.parent / "static_config"
-            cli_adapter = CLIAdapter(static_config_dir / "cli_config.json")
+            cli_adapter = CLIAdapter(get_static_config_dir() / "cli_config.json")
             self.codex_cmd, _, _ = cli_adapter.build_command_for_role(
                 provider_id=None, prompt=None, model=None, timeout_sec=None
             )
@@ -653,12 +654,12 @@ class FamilyCreator:
             lang=self.args.lang,
         )
 
-        stdout = self._call_codex(prompt)
+        stdout = call_codex(prompt, self.codex_cmd, self.timeout_sec)
 
         # Parse JSON
         try:
             # Extract JSON from potential Markdown code blocks
-            json_text = self._extract_json(stdout)
+            json_text = extract_json_from_markdown(stdout)
             family_spec = json.loads(json_text)
         except json.JSONDecodeError as exc:
             print(f"Fehler: Codex lieferte invalides JSON:\n{stdout}", file=sys.stderr)
@@ -684,46 +685,6 @@ class FamilyCreator:
             family_spec = self._clone_from_template(template_config, family_spec)
 
         return family_spec
-
-    def _call_codex(self, prompt: str) -> str:
-        """
-        Call Codex CLI and return stdout.
-        """
-        try:
-            proc = subprocess.run(
-                self.codex_cmd,
-                input=prompt,
-                text=True,
-                capture_output=True,
-                timeout=self.timeout_sec,
-            )
-        except subprocess.TimeoutExpired as exc:
-            raise RuntimeError(f"Codex CLI timeout nach {self.timeout_sec}s") from exc
-        except FileNotFoundError as exc:
-            raise RuntimeError(f"Codex CLI nicht gefunden: {exc}") from exc
-
-        if proc.returncode != 0:
-            stderr = (proc.stderr or "").strip()
-            raise RuntimeError(f"Codex CLI failed (rc={proc.returncode}): {stderr}")
-
-        return (proc.stdout or "").strip()
-
-    def _extract_json(self, text: str) -> str:
-        """
-        Extract JSON from Markdown code blocks if necessary.
-        """
-        # Try to find JSON code block
-        match = re.search(r"```json\s*\n(.*?)\n```", text, re.DOTALL)
-        if match:
-            return match.group(1)
-
-        # Try generic code block
-        match = re.search(r"```\s*\n(\{.*?\})\n```", text, re.DOTALL)
-        if match:
-            return match.group(1)
-
-        # Otherwise: entire text
-        return text.strip()
 
     def _validate_family_spec(self, spec: Dict) -> None:
         """
@@ -840,7 +801,7 @@ class FamilyCreator:
                 extra_instructions=""
             )
 
-            optimized = self._call_codex(prompt)
+            optimized = call_codex(prompt, self.codex_cmd, self.timeout_sec)
             role["description"] = optimized.strip()
 
         return spec
@@ -858,7 +819,7 @@ class FamilyCreator:
                 lang=self.args.lang,
             )
 
-            template = self._call_codex(prompt)
+            template = call_codex(prompt, self.codex_cmd, self.timeout_sec)
             role["prompt_template"] = template.strip()
 
         return spec

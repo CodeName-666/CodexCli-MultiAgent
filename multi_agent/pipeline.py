@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Dict, List
 
 from .cli_adapter import CLIAdapter
+from .constants import get_static_config_dir, DEFAULT_TOKEN_CHARS
 from .executor import AgentExecutor, CLIClient
 from .coordination import CoordinationConfig, CoordinationLog, TaskBoard
 from .diff_applier import BaseDiffApplier, UnifiedDiffApplier
@@ -739,7 +740,7 @@ class Pipeline:
     ) -> tuple[str, int, bool, int, int]:
         max_prompt_chars = role_cfg.max_prompt_chars or int(cfg.role_defaults.get("max_prompt_chars", 0) or 0)
         prompt_limits = cfg.prompt_limits or {}
-        token_chars = int(prompt_limits.get("token_chars", 4) or 4)
+        token_chars = int(prompt_limits.get("token_chars", DEFAULT_TOKEN_CHARS) or DEFAULT_TOKEN_CHARS)
         max_prompt_tokens = role_cfg.max_prompt_tokens or int(cfg.role_defaults.get("max_prompt_tokens", 0) or 0)
         if max_prompt_tokens <= 0:
             model_name = role_cfg.model or ""
@@ -841,8 +842,7 @@ class Pipeline:
             timeout_sec = int(cfg.role_defaults.get("timeout_sec", 1200))
 
         # Load CLI adapter (single source of truth for all providers)
-        static_config_dir = Path(__file__).parent.parent / "static_config"
-        cli_config_path = static_config_dir / "cli_config.json"
+        cli_config_path = get_static_config_dir() / "cli_config.json"
         cli_adapter = CLIAdapter(cli_config_path)
 
         # Determine provider: role-specific or default

@@ -8,7 +8,14 @@ from pathlib import Path
 from typing import List, Optional
 
 from .config_loader import load_app_config
-from .constants import DEFAULT_CONFIG_PATH, DEFAULT_MAX_FILE_BYTES, DEFAULT_MAX_FILES, DEFAULT_TIMEOUT_SEC
+from .constants import (
+    DEFAULT_CONFIG_PATH,
+    DEFAULT_MAX_FILE_BYTES,
+    DEFAULT_MAX_FILES,
+    DEFAULT_TIMEOUT_SEC,
+    ExitCode,
+    get_static_config_dir,
+)
 from .pipeline import build_pipeline
 from .task_split import (
     build_chunk_payload,
@@ -120,8 +127,7 @@ async def _run_split(pipeline, args: argparse.Namespace, cfg) -> int:
                 codex_cmd = parse_cmd(raw_cmd)
             else:
                 # Use CLIAdapter to get default provider command
-                static_config_dir = Path(__file__).parent.parent / "static_config"
-                cli_config_path = static_config_dir / "cli_config.json"
+                cli_config_path = get_static_config_dir() / "cli_config.json"
                 cli_adapter = CLIAdapter(cli_config_path)
                 codex_cmd, _, _ = cli_adapter.build_command_for_role(
                     provider_id=None,  # Use default provider

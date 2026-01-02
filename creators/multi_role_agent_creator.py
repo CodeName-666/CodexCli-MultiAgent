@@ -20,10 +20,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from multi_agent.cli_adapter import CLIAdapter
 from multi_agent.common_utils import load_json, write_json, deep_merge, slugify
+from multi_agent.constants import get_static_config_dir, DEFAULT_CONFIG_PATH
 from multi_agent.utils import parse_cmd
+from creators.codex_client import call_codex, extract_json_from_markdown
 
 # Constants
-DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent.parent / "agent_families" / "developer_main.json"
 DEFAULT_FORMAT_SECTIONS = ["- Aufgaben:", "- Entscheidungen:", "- Offene Punkte:"]
 DEFAULT_RULE_LINES = [
     "Ausgabe muss exakt diese Abschnittsmarker enthalten.",
@@ -39,8 +40,7 @@ def load_config_with_defaults(config_path: Path) -> Dict[str, object]:
     Requires defaults.json in static_config/ directory.
     Family config values override defaults.
     """
-    static_config_dir = config_path.parent.parent / "static_config"
-    defaults_path = static_config_dir / "defaults.json"
+    defaults_path = get_static_config_dir() / "defaults.json"
 
     if not defaults_path.exists():
         raise FileNotFoundError(
@@ -265,48 +265,6 @@ RULES:
     return "\n\n".join(prompt_parts)
 
 
-def extract_json(text: str) -> str:
-    """
-    Extract JSON from Markdown code blocks if necessary.
-    """
-    # Try to find JSON code block
-    match = re.search(r"```json\s*\n(.*?)\n```", text, re.DOTALL)
-    if match:
-        return match.group(1)
-
-    # Try generic code block
-    match = re.search(r"```\s*\n(\{.*?\})\n```", text, re.DOTALL)
-    if match:
-        return match.group(1)
-
-    # Otherwise: entire text
-    return text.strip()
-
-
-def call_codex(prompt: str, codex_cmd: List[str], timeout_sec: int) -> str:
-    """
-    Call Codex CLI and return stdout.
-    """
-    try:
-        proc = subprocess.run(
-            codex_cmd,
-            input=prompt,
-            text=True,
-            capture_output=True,
-            timeout=timeout_sec,
-        )
-    except subprocess.TimeoutExpired as exc:
-        raise RuntimeError(f"Codex CLI timeout nach {timeout_sec}s") from exc
-    except FileNotFoundError as exc:
-        raise RuntimeError(f"Codex CLI nicht gefunden: {exc}") from exc
-
-    if proc.returncode != 0:
-        stderr = (proc.stderr or "").strip()
-        raise RuntimeError(f"Codex CLI failed (rc={proc.returncode}): {stderr}")
-
-    return (proc.stdout or "").strip()
-
-
 def generate_role_spec_via_codex(
     description: str,
     config: Dict,
@@ -331,8 +289,7 @@ def generate_role_spec_via_codex(
     if args.codex_cmd_override:
         codex_cmd = parse_cmd(args.codex_cmd_override)
     else:
-        static_config_dir = Path(__file__).parent.parent / "static_config"
-        cli_adapter = CLIAdapter(static_config_dir / "cli_config.json")
+        cli_adapter = CLIAdapter(get_static_config_dir() / "cli_config.json")
         codex_cmd, _, _ = cli_adapter.build_command_for_role(
             provider_id=None, prompt=None, model=None, timeout_sec=None
         )
@@ -342,7 +299,7 @@ def generate_role_spec_via_codex(
 
     # Parse JSON
     try:
-        json_text = extract_json(stdout)
+        json_text = extract_json_from_markdown(stdout)
         role_spec = json.loads(json_text)
     except json.JSONDecodeError as exc:
         print(f"Fehler: Codex lieferte invalides JSON:\n{stdout}", file=sys.stderr)
