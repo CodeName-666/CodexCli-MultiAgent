@@ -37,6 +37,16 @@ def _coerce_str_list(value: object) -> list[str]:
     return [str(value)]
 
 
+def _normalize_prompt_template(value: object, role_path: Path) -> str:
+    if isinstance(value, list):
+        if not all(isinstance(item, str) for item in value):
+            raise ValueError(f"Role file prompt_template must be list of strings: {role_path}")
+        return "\n".join(value)
+    if isinstance(value, str):
+        return value
+    raise ValueError(f"Role file prompt_template must be string or list of strings: {role_path}")
+
+
 def load_role_config(
     role_entry: Dict[str, object],
     base_dir: Path,
@@ -47,6 +57,8 @@ def load_role_config(
     role_id = str(role_entry.get("id") or data.get("id") or "")
     if not role_id:
         raise ValueError(f"Role file missing id: {role_path}")
+    if "prompt_template" not in data:
+        raise ValueError(f"Role file missing prompt_template: {role_path}")
     defaults = role_defaults
     timeout_sec = role_entry.get("timeout_sec", defaults.get("timeout_sec"))
     max_output_chars = role_entry.get("max_output_chars", defaults.get("max_output_chars"))
@@ -73,7 +85,7 @@ def load_role_config(
         id=role_id,
         name=str(data.get("name") or role_id),
         role=str(data["role"]),
-        prompt_template=str(data["prompt_template"]),
+        prompt_template=_normalize_prompt_template(data["prompt_template"], role_path),
         apply_diff=bool(role_entry.get("apply_diff", False)),
         instances=max(1, int(role_entry.get("instances", 1))),
         depends_on=_coerce_str_list(role_entry.get("depends_on")),

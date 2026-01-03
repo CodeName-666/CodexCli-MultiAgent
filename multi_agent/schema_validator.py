@@ -16,6 +16,16 @@ def _validate_required(data: Dict[str, object], keys: list[str]) -> Tuple[bool, 
     return True, ""
 
 
+def _validate_prompt_template(value: object) -> Tuple[bool, str]:
+    if isinstance(value, str):
+        return True, ""
+    if isinstance(value, list):
+        if all(isinstance(item, str) for item in value):
+            return True, ""
+        return False, "prompt_template list entries must be strings"
+    return False, "prompt_template must be a string or list of strings"
+
+
 def validate_config(config_path: Path) -> Tuple[bool, str]:
     try:
         cfg = _load_json(config_path)
@@ -61,6 +71,9 @@ def validate_config(config_path: Path) -> Tuple[bool, str]:
         except json.JSONDecodeError as exc:
             return False, f"invalid role JSON: {exc}"
         ok, error = _validate_required(role_data, ["id", "role", "prompt_template"])
+        if not ok:
+            return False, f"role {role_path}: {error}"
+        ok, error = _validate_prompt_template(role_data.get("prompt_template"))
         if not ok:
             return False, f"role {role_path}: {error}"
 
