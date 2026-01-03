@@ -1,3 +1,5 @@
+"""Load and normalize application configuration from JSON files."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -31,6 +33,7 @@ from .models import (
 
 
 def _coerce_str_list(value: object) -> list[str]:
+    """Coerce a value into a list of strings."""
     if value is None:
         return []
     if isinstance(value, list):
@@ -39,6 +42,7 @@ def _coerce_str_list(value: object) -> list[str]:
 
 
 def _normalize_prompt_template(value: object, role_path: Path) -> str:
+    """Normalize prompt_template to a single string."""
     if isinstance(value, list):
         if not all(isinstance(item, str) for item in value):
             raise ValueError(f"Role file prompt_template must be list of strings: {role_path}")
@@ -49,6 +53,7 @@ def _normalize_prompt_template(value: object, role_path: Path) -> str:
 
 
 def _append_rule(system_rules: str, rule: str) -> str:
+    """Append a rule to system_rules if it is not already present."""
     if rule in system_rules:
         return system_rules
     if not system_rules.endswith("\n"):
@@ -57,6 +62,7 @@ def _append_rule(system_rules: str, rule: str) -> str:
 
 
 def _apply_formatting_rules(system_rules: str, formatting_cfg: Dict[str, object]) -> str:
+    """Apply formatting-related rules to the system rules string."""
     if not bool(formatting_cfg.get("enabled", False)):
         return system_rules
     if bool(formatting_cfg.get("output_json_as_toon", False)):
@@ -79,6 +85,11 @@ def load_role_config(
     base_dir: Path,
     role_defaults: RoleDefaultsConfig,
 ) -> RoleConfig:
+    """
+    Load a role config entry and resolve defaults and prompt templates.
+
+    Applies CLI provider overrides and sharding-related defaults.
+    """
     role_path = base_dir / str(role_entry["file"])
     data = load_json(role_path)
     role_id = str(role_entry.get("id") or data.get("id") or "")

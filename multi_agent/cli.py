@@ -1,3 +1,5 @@
+"""Top-level CLI entrypoint and help output."""
+
 from __future__ import annotations
 
 import sys
@@ -6,6 +8,7 @@ from .commands import build_dispatcher
 
 
 def print_main_help() -> None:
+    """Print the top-level CLI usage and examples."""
     print("Multi-Agent Codex CLI")
     print("=" * 60)
     print("\nDieses CLI bietet mehrere Funktionen zum Arbeiten mit Multi-Agent-Systemen.\n")
@@ -41,6 +44,7 @@ def print_main_help() -> None:
 
 
 def main() -> None:
+    """Dispatch CLI commands and exit with the resulting status code."""
     dispatcher = build_dispatcher()
 
     if len(sys.argv) > 1 and sys.argv[1] in ["-h", "--help"]:

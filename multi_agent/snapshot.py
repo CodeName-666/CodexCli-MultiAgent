@@ -1,3 +1,5 @@
+"""Workspace snapshot builders for context packaging."""
+
 from __future__ import annotations
 
 import abc
@@ -14,6 +16,7 @@ from .utils import read_text_safe, select_relevant_files
 
 @dataclass(frozen=True)
 class SnapshotResult:
+    """Snapshot text and metadata for a workspace capture."""
     text: str
     files: List[Path]
     cache_hit: bool
@@ -23,6 +26,8 @@ class SnapshotResult:
 
 
 class BaseSnapshotter(abc.ABC):
+    """Abstract snapshotter interface."""
+
     @abc.abstractmethod
     def build_snapshot(
         self,
@@ -33,10 +38,13 @@ class BaseSnapshotter(abc.ABC):
         task: str | None = None,
         formatting: Dict[str, object] | None = None,
     ) -> SnapshotResult:
+        """Build a workspace snapshot with optional formatting."""
         raise NotImplementedError
 
 
 class WorkspaceSnapshotter(BaseSnapshotter):
+    """Snapshotter that captures files from a local workspace."""
+
     def build_snapshot(
         self,
         root: Path,
@@ -178,6 +186,7 @@ class WorkspaceSnapshotter(BaseSnapshotter):
         cache_file: object,
         delta_snapshot: bool,
     ) -> Tuple[bool, bool, List[Path] | None, str | None]:
+        """Apply snapshot caching and optional delta selection."""
         if not cache_file:
             return False, False, None, None
         cache_path = root / str(cache_file)
@@ -197,12 +206,14 @@ class WorkspaceSnapshotter(BaseSnapshotter):
         return False, False, None, None
 
     def _load_cache(self, path: Path) -> Dict[str, object]:
+        """Load a snapshot cache file or return empty dict."""
         try:
             return json.loads(path.read_text(encoding="utf-8"))
         except (FileNotFoundError, json.JSONDecodeError):
             return {}
 
     def _write_cache(self, root: Path, files: List[Path], cache_file: object, snapshot: str) -> None:
+        """Persist a snapshot cache payload."""
         if not cache_file:
             return
         cache_path = root / str(cache_file)
@@ -217,6 +228,7 @@ class WorkspaceSnapshotter(BaseSnapshotter):
 
     @staticmethod
     def _build_file_index(root: Path, files: List[Path]) -> Dict[str, Tuple[int, int]]:
+        """Build a file index of mtime and size for cache signatures."""
         index: Dict[str, Tuple[int, int]] = {}
         for p in files:
             rel = p.relative_to(root).as_posix()
@@ -229,6 +241,7 @@ class WorkspaceSnapshotter(BaseSnapshotter):
 
     @staticmethod
     def _hash_file_index(index: Dict[str, Tuple[int, int]]) -> str:
+        """Return a stable hash for a file index."""
         items = [f"{key}:{meta[0]}:{meta[1]}" for key, meta in sorted(index.items())]
         digest = hashlib.sha256("\n".join(items).encode("utf-8")).hexdigest()
         return digest

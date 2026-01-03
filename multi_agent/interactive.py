@@ -1,3 +1,5 @@
+"""Interactive CLI flows for configuring and running tasks."""
+
 from __future__ import annotations
 
 import argparse
@@ -204,7 +206,11 @@ def _print_run_summary(family_path: Path, task: str, options: dict) -> None:
 
 
 def interactive_run(argv: Optional[List[str]] = None) -> int:
-    """Interactive/CLI hybrid mode - ask user for missing inputs or use CLI args."""
+    """
+    Interactive/CLI hybrid mode.
+
+    Prompts for missing inputs, summarizes options, and runs the pipeline.
+    """
     args = parse_args_run(argv)
 
     has_family = args.family is not None

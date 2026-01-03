@@ -1,3 +1,5 @@
+"""CLI command definitions and dispatch helpers."""
+
 from __future__ import annotations
 
 import argparse
@@ -28,19 +30,25 @@ except Exception:  # noqa: BLE001
 
 
 class Command:
+    """Base class for CLI subcommands."""
     name = ""
 
     def run(self, argv: List[str]) -> int:
+        """Execute the command and return an exit code."""
         raise NotImplementedError
 
 
 class CommandDispatcher:
+    """Dispatches CLI arguments to registered subcommands."""
+
     def __init__(self, commands: List[Command], default_command: str, fallback_command: str) -> None:
+        """Register subcommands and defaults for dispatch."""
         self._commands = {cmd.name: cmd for cmd in commands}
         self._default = default_command
         self._fallback = fallback_command
 
     def dispatch(self, argv: List[str]) -> int:
+        """Dispatch argv to a subcommand and return its exit code."""
         if not argv:
             return self._commands[self._default].run([])
         subcommand = argv[0]
@@ -50,6 +58,7 @@ class CommandDispatcher:
 
 
 def _parse_config_path(argv: Optional[List[str]]) -> Path:
+    """Extract the config path from argv without consuming other args."""
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--config", default=str(DEFAULT_CONFIG_PATH))
     args, _ = parser.parse_known_args(argv)
@@ -99,9 +108,11 @@ def parse_args_task(cfg, argv: Optional[List[str]] = None) -> argparse.Namespace
 
 
 class TaskCommand(Command):
+    """Run a task using a provided or configured prompt."""
     name = "task"
 
     def run(self, argv: List[str]) -> int:
+        """Execute the task command with parsed arguments."""
         config_path = _parse_config_path(argv)
         try:
             cfg = load_app_config(config_path)
@@ -129,16 +140,20 @@ class TaskCommand(Command):
 
 
 class RunCommand(Command):
+    """Run the interactive CLI flow."""
     name = "run"
 
     def run(self, argv: List[str]) -> int:
+        """Execute the interactive run command."""
         return interactive_run(argv)
 
 
 class CreateFamilyCommand(Command):
+    """Create a new agent family via the creator module."""
     name = "create-family"
 
     def run(self, argv: List[str]) -> int:
+        """Execute the create-family command."""
         if not CREATORS_AVAILABLE or multi_family_creator is None:
             print_error("Creator-Module nicht verfuegbar.")
             print("Stelle sicher, dass das 'creators' Verzeichnis im Python-Path ist.", file=sys.stderr)
@@ -147,9 +162,11 @@ class CreateFamilyCommand(Command):
 
 
 class CreateRoleCommand(Command):
+    """Create a new agent role via the creator module."""
     name = "create-role"
 
     def run(self, argv: List[str]) -> int:
+        """Execute the create-role command."""
         if not CREATORS_AVAILABLE or multi_role_agent_creator is None:
             print_error("Creator-Module nicht verfuegbar.")
             print("Stelle sicher, dass das 'creators' Verzeichnis im Python-Path ist.", file=sys.stderr)
@@ -167,6 +184,7 @@ class CreateRoleCommand(Command):
 
 
 def build_dispatcher() -> CommandDispatcher:
+    """Construct the default command dispatcher."""
     commands: List[Command] = [
         TaskCommand(),
         RunCommand(),

@@ -1,3 +1,5 @@
+"""Task coordination primitives for multi-agent runs."""
+
 from __future__ import annotations
 
 import asyncio
@@ -12,11 +14,13 @@ from typing import Dict, Iterable, List
 
 
 def _utc_now() -> str:
+    """Return current UTC timestamp in ISO 8601 with Z suffix."""
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 @dataclass(frozen=True)
 class CoordinationConfig:
+    """Configuration for coordination logging and task board locks."""
     task_board: str
     channel: str
     lock_mode: str
@@ -25,10 +29,14 @@ class CoordinationConfig:
 
 
 class CoordinationLog:
+    """Append-only coordination log writer."""
+
     def __init__(self, path: Path) -> None:
+        """Create a log writer for the given path."""
         self._path = path
 
     def append(self, sender: str, kind: str, payload: Dict[str, object]) -> None:
+        """Append a structured log entry to the coordination log."""
         entry = {
             "ts": _utc_now(),
             "sender": sender,
@@ -42,7 +50,10 @@ class CoordinationLog:
 
 
 class TaskBoard:
+    """Persisted task board with optional file locking."""
+
     def __init__(self, path: Path, lock_mode: str, lock_timeout_sec: int) -> None:
+        """Initialize task board storage and lock settings."""
         self._path = path
         self._lock_mode = lock_mode
         self._lock_timeout_sec = lock_timeout_sec
@@ -50,6 +61,7 @@ class TaskBoard:
         self._lock_path = self._path.with_suffix(self._path.suffix + ".lock")
 
     async def initialize(self, tasks: Iterable[Dict[str, object]]) -> None:
+        """Initialize the task board with the provided tasks."""
         data = {
             "version": 1,
             "tasks": list(tasks),
@@ -57,6 +69,7 @@ class TaskBoard:
         await self._write(data)
 
     async def update_task(self, task_id: str, updates: Dict[str, object]) -> None:
+        """Update or append a task entry with locking."""
         async with self._lock:
             async with self._acquire_lock():
                 data = await self._read()
@@ -74,18 +87,21 @@ class TaskBoard:
                 await self._write(data)
 
     async def _read(self) -> Dict[str, object]:
+        """Read the task board JSON from disk."""
         if not self._path.exists():
             return {"version": 0, "tasks": []}
         raw = await asyncio.to_thread(self._path.read_text, encoding="utf-8")
         return json.loads(raw)
 
     async def _write(self, data: Dict[str, object]) -> None:
+        """Write the task board JSON to disk."""
         self._path.parent.mkdir(parents=True, exist_ok=True)
         payload = json.dumps(data, indent=2, ensure_ascii=True) + "\n"
         await asyncio.to_thread(self._path.write_text, payload, encoding="utf-8")
 
     @asynccontextmanager
     async def _acquire_lock(self):
+        """Acquire an optional file lock for task board updates."""
         if self._lock_mode != "file_lock":
             yield
             return

@@ -97,11 +97,9 @@ Integrate into pipeline
         self.assertEqual(shards[1].title, "Chunk 2: Implement planner")
         self.assertEqual(shards[2].title, "Chunk 3: Pipeline integration")
 
-        # Check goals were extracted
         self.assertEqual(shards[0].goal, "Add new RoleConfig fields")
         self.assertEqual(shards[1].goal, "Create ShardPlanner")
 
-        # Check allowed_paths were extracted
         self.assertIn("multi_agent/models.py", shards[0].allowed_paths)
         self.assertIn("multi_agent/config_loader.py", shards[0].allowed_paths)
         self.assertIn("multi_agent/sharding.py", shards[1].allowed_paths)
@@ -125,7 +123,6 @@ Content 4
         shards = _plan_shards_by_headings(task_text, shard_count=2, role_cfg=role_cfg)
 
         self.assertEqual(len(shards), 2)
-        # Shards should contain multiple sections
         self.assertIn(" / ", shards[0].title or shards[1].title)
 
     def test_plan_shards_no_headings(self) -> None:
@@ -191,18 +188,15 @@ See [documentation](docs/README.md) for details.
 
     def test_group_sections_greedy_balancing(self) -> None:
         """Test that greedy algorithm distributes size fairly."""
-        # Create sections with varying sizes
         sections = [
-            (HeadingInfo(1, 1, "Big Section", 1), "line\n" * 100, "Goal 1", []),  # 100 lines
-            (HeadingInfo(2, 1, "Medium Section", 102), "line\n" * 50, "Goal 2", []),  # 50 lines
-            (HeadingInfo(3, 1, "Small Section", 153), "line\n" * 10, "Goal 3", []),  # 10 lines
+            (HeadingInfo(1, 1, "Big Section", 1), "line\n" * 100, "Goal 1", []),
+            (HeadingInfo(2, 1, "Medium Section", 102), "line\n" * 50, "Goal 2", []),
+            (HeadingInfo(3, 1, "Small Section", 153), "line\n" * 10, "Goal 3", []),
         ]
 
         shards = _group_sections_greedy(sections, shard_count=2, preamble="")
 
         self.assertEqual(len(shards), 2)
-        # Big section should go to one shard, medium+small to the other
-        # Verify both shards have content
         self.assertTrue(all(len(shard.content) > 0 for shard in shards))
 
     def test_create_shard_plan_deterministic(self) -> None:
@@ -248,9 +242,7 @@ Content B
 
         self.assertIsNotNone(plan)
         self.assertEqual(len(plan.shards), 2)
-        # Preamble should be in first shard
         self.assertIn("This is a preamble", plan.shards[0].content)
-        # But not in second shard
         self.assertNotIn("This is a preamble", plan.shards[1].content)
 
 
@@ -295,20 +287,15 @@ class DiffUtilsTest(unittest.TestCase):
         """Test glob pattern matching."""
         from multi_agent.diff_utils import check_path_matches_globs
 
-        # Test exact match
         self.assertTrue(check_path_matches_globs("multi_agent/models.py", ["multi_agent/models.py"]))
 
-        # Test wildcard match
         self.assertTrue(check_path_matches_globs("multi_agent/models.py", ["multi_agent/**"]))
         self.assertTrue(check_path_matches_globs("multi_agent/sub/file.py", ["multi_agent/**"]))
 
-        # Test extension match
         self.assertTrue(check_path_matches_globs("test.py", ["*.py"]))
 
-        # Test no match
         self.assertFalse(check_path_matches_globs("other/file.py", ["multi_agent/**"]))
 
-        # Test ** matches everything
         self.assertTrue(check_path_matches_globs("anything/anywhere.txt", ["**"]))
 
     def test_validate_allowed_paths(self) -> None:
@@ -348,7 +335,6 @@ class DiffUtilsTest(unittest.TestCase):
 
         overlaps = detect_file_overlaps(instance_diffs)
 
-        # file_b.py is touched by instance1 and instance3
         self.assertEqual(len(overlaps), 1)
         self.assertIn("file_b.py", overlaps)
         self.assertEqual(set(overlaps["file_b.py"]), {"instance1", "instance3"})

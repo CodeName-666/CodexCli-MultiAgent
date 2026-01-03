@@ -1,3 +1,5 @@
+"""Simple JSONL run logger for structured events."""
+
 from __future__ import annotations
 
 import json
@@ -6,11 +8,15 @@ from typing import Dict
 
 
 class JsonRunLogger:
+    """Append-only JSONL logger for run events."""
+
     def __init__(self, path: Path, enabled: bool = True) -> None:
+        """Initialize logger with output path and enabled flag."""
         self._path = path
         self._enabled = enabled
 
     def log(self, event: str, payload: Dict[str, object]) -> None:
+        """Append a JSON event record to the log file."""
         if not self._enabled:
             return
         entry = {"event": event, "payload": payload}

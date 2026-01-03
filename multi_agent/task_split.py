@@ -1,3 +1,5 @@
+"""Task splitting utilities for large Markdown prompts."""
+
 from __future__ import annotations
 
 import hashlib
@@ -16,6 +18,7 @@ HEADING_RE = re.compile(r"^(#{1,6})\s+(.+)$")
 
 @dataclass(frozen=True)
 class TaskChunk:
+    """Chunk of task text with an index and title."""
     index: int
     title: str
     content: str
@@ -23,6 +26,7 @@ class TaskChunk:
 
 @dataclass(frozen=True)
 class HeadingInfo:
+    """Parsed heading metadata from Markdown."""
     index: int
     level: int
     title: str
@@ -30,6 +34,7 @@ class HeadingInfo:
 
 
 def load_task_text(task_arg: str, workdir: Path) -> Tuple[str, str]:
+    """Load task text from inline input or a file reference."""
     raw = (task_arg or "").strip()
     if not raw:
         raise ValueError("Fehler: --task ist leer.")
@@ -48,6 +53,7 @@ def load_task_text(task_arg: str, workdir: Path) -> Tuple[str, str]:
 
 
 def build_split_id(task_source: str, task_text: str) -> str:
+    """Build a stable split id from task content."""
     base = Path(task_source).stem if task_source else "inline_task"
     slug = _slugify(base)
     digest = hashlib.sha256(task_text.encode("utf-8")).hexdigest()[:8]
@@ -55,6 +61,7 @@ def build_split_id(task_source: str, task_text: str) -> str:
 
 
 def needs_split(task_text: str, split_cfg: Dict[str, object]) -> bool:
+    """Return True if heuristics indicate the task should be split."""
     text = (task_text or "").strip()
     if not text:
         return False
@@ -80,6 +87,7 @@ def split_task_markdown(
     min_chars: int,
     max_chars: int,
 ) -> List[TaskChunk]:
+    """Split Markdown into chunks based on headings and size limits."""
     raw = (text or "").strip()
     if not raw:
         return []
@@ -97,6 +105,7 @@ def split_task_markdown(
 
 
 def extract_headings(text: str, max_level: int) -> List[HeadingInfo]:
+    """Extract headings up to a max level from Markdown text."""
     lines = (text or "").splitlines()
     max_level = max(1, min(max_level, 6))
     in_code = False
@@ -126,6 +135,7 @@ def plan_chunks_with_llm(
     output_format: str = "json",
     formatting: Dict[str, object] | None = None,
 ) -> List[Dict[str, object]]:
+    """Use an LLM to propose chunk boundaries for headings."""
     if not headings or len(headings) < 2:
         return []
     if max_headings > 0 and len(headings) > max_headings:
@@ -159,6 +169,7 @@ def build_chunks_from_plan(
     headings: List[HeadingInfo],
     plan: List[Dict[str, object]],
 ) -> List[TaskChunk]:
+    """Build task chunks from an LLM-provided plan."""
     validated = _validate_plan(plan, len(headings))
     if not validated:
         return []
@@ -185,6 +196,7 @@ def build_chunk_payload(
     carry_over: str,
     carry_over_max_chars: int,
 ) -> str:
+    """Compose a chunk payload with optional carry-over context."""
     payload = (base_text or "").rstrip()
     if not carry_over:
         return payload + "\n"
@@ -196,6 +208,7 @@ def build_chunk_payload(
 
 
 def write_base_chunks(chunks: Iterable[TaskChunk], tasks_dir: Path) -> None:
+    """Write base chunk files to the tasks directory."""
     tasks_dir.mkdir(parents=True, exist_ok=True)
     for chunk in chunks:
         filename = f"chunk_{chunk.index:03d}.md"
@@ -208,6 +221,7 @@ def init_manifest(
     chunks: List[TaskChunk],
     tasks_dir: Path,
 ) -> Dict[str, object]:
+    """Create a task split manifest payload."""
     payload = {
         "split_id": split_id,
         "created_at": now_stamp(),
@@ -233,15 +247,18 @@ def init_manifest(
 
 
 def save_manifest(path: Path, manifest: Dict[str, object]) -> None:
+    """Write a manifest JSON file to disk."""
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(manifest, indent=2, ensure_ascii=True) + "\n", encoding="utf-8")
 
 
 def load_manifest(path: Path) -> Dict[str, object]:
+    """Load a manifest JSON file from disk."""
     return json.loads(path.read_text(encoding="utf-8"))
 
 
 def resolve_split_dirs(workdir: Path, split_cfg: Dict[str, object], split_id: str) -> Tuple[Path, Path]:
+    """Resolve output and task directories for a split run."""
     raw = str(split_cfg.get("output_dir") or f".multi_agent_runs/{split_id}").replace("<split_id>", split_id)
     split_dir = Path(raw)
     if not split_dir.is_absolute():
@@ -251,6 +268,7 @@ def resolve_split_dirs(workdir: Path, split_cfg: Dict[str, object], split_id: st
 
 
 def _split_by_heading_level(text: str, max_level: int) -> List[TaskChunk]:
+    """Split text into chunks using headings up to a level."""
     lines = text.splitlines()
     in_code = False
     chunks: List[TaskChunk] = []
@@ -277,6 +295,7 @@ def _split_by_heading_level(text: str, max_level: int) -> List[TaskChunk]:
 
 
 def _split_large_chunks(chunks: List[TaskChunk], min_heading_level: int, max_chars: int) -> List[TaskChunk]:
+    """Further split chunks that exceed the maximum size."""
     if max_chars <= 0:
         return list(chunks)
     out: List[TaskChunk] = []
@@ -289,6 +308,7 @@ def _split_large_chunks(chunks: List[TaskChunk], min_heading_level: int, max_cha
 
 
 def _split_chunk_to_size(chunk: TaskChunk, min_heading_level: int, max_chars: int) -> List[TaskChunk]:
+    """Split a single chunk by headings or paragraphs to fit size."""
     if len(chunk.content) <= max_chars:
         return [chunk]
     min_heading_level = max(1, min(min_heading_level, 6))
@@ -307,6 +327,7 @@ def _split_chunk_to_size(chunk: TaskChunk, min_heading_level: int, max_chars: in
 
 
 def _split_by_heading_min_level(text: str, min_level: int) -> List[TaskChunk]:
+    """Split text into chunks using headings at or below min level."""
     lines = text.splitlines()
     in_code = False
     chunks: List[TaskChunk] = []
@@ -332,6 +353,7 @@ def _split_by_heading_min_level(text: str, min_level: int) -> List[TaskChunk]:
 
 
 def _extract_prefix(text: str, min_level: int) -> Tuple[str, str]:
+    """Extract a prefix section before the first heading at min level."""
     lines = text.splitlines()
     in_code = False
     for idx, line in enumerate(lines):
@@ -348,6 +370,7 @@ def _extract_prefix(text: str, min_level: int) -> Tuple[str, str]:
 
 
 def _split_by_paragraphs(chunk: TaskChunk, max_chars: int) -> List[TaskChunk]:
+    """Split a chunk into paragraph-sized chunks."""
     if max_chars <= 0:
         return [chunk]
     text = chunk.content.strip()
@@ -373,6 +396,7 @@ def _split_by_paragraphs(chunk: TaskChunk, max_chars: int) -> List[TaskChunk]:
 
 
 def _merge_small_chunks(chunks: List[TaskChunk], min_chars: int) -> List[TaskChunk]:
+    """Merge adjacent chunks until they meet a minimum size."""
     if min_chars <= 0:
         return list(chunks)
     merged: List[TaskChunk] = []
@@ -393,6 +417,7 @@ def _merge_small_chunks(chunks: List[TaskChunk], min_chars: int) -> List[TaskChu
 
 
 def _join_titles(parent: str, child: str) -> str:
+    """Join parent and child titles with a separator."""
     parent = parent.strip()
     child = child.strip()
     if not child or child.lower() == "teil":
@@ -403,12 +428,14 @@ def _join_titles(parent: str, child: str) -> str:
 
 
 def _slugify(text: str) -> str:
+    """Return a lowercase ASCII slug from input text."""
     text = text.strip().lower()
     text = re.sub(r"[^a-z0-9]+", "_", text)
     return text.strip("_") or "task"
 
 
 def _build_llm_prompt(headings: List[HeadingInfo], output_format: str = "json") -> str:
+    """Build an LLM prompt for chunk planning."""
     if output_format == "toon":
         lines = [
             "You are a planner. Group the numbered headings into chunks by feature/module.",
@@ -454,6 +481,7 @@ def _extract_plan_payload(
     output_format: str,
     converter,
 ) -> object:
+    """Extract a JSON or TOON plan payload from LLM output."""
     if not raw:
         return None
     if output_format == "toon":
@@ -480,6 +508,7 @@ def _validate_plan(
     plan: List[Dict[str, object]],
     total_headings: int,
 ) -> List[Tuple[int, int, str]]:
+    """Validate plan entries and return normalized tuples."""
     if total_headings < 1:
         return []
     entries: List[Tuple[int, int, str]] = []

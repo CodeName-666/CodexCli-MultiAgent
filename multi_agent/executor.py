@@ -17,12 +17,16 @@ from .utils import get_status_text, write_text
 
 
 class ProgressDisplay(Protocol):
+    """Interface for progress display updates during streaming."""
+
     def update(self, chunk: str, tokens: int, elapsed: float) -> None:
+        """Update progress with a streamed chunk and token count."""
         ...
 
 
 @dataclass
 class StreamingContext:
+    """Runtime options for streaming execution and progress updates."""
     enabled: bool
     progress_display: ProgressDisplay | None = None
     cancel_event: asyncio.Event | None = None
@@ -145,12 +149,15 @@ class CLIClient:
 
 
 class AgentExecutor:
+    """Execute agents via a CLI client and persist outputs."""
+
     def __init__(
         self,
         client: CLIClient,
         agent_output_cfg: Dict[str, str],
         messages: Dict[str, str],
     ) -> None:
+        """Store dependencies for executing an agent run."""
         self._client = client
         self._agent_output_cfg = agent_output_cfg
         self._messages = messages
@@ -163,6 +170,7 @@ class AgentExecutor:
         out_file: Path,
         streaming: StreamingContext | None = None,
     ) -> AgentResult:
+        """Run a single agent and return the structured result."""
         use_rich = bool(streaming and streaming.enabled and getattr(streaming.progress_display, "use_rich", False))
         if not use_rich:
             print(f"[Agent-Start] {agent.name} ({agent.role})")

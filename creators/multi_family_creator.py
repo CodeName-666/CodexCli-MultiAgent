@@ -7,6 +7,7 @@ This tool generates:
 - All role definition files (<family>_agents/*.json)
 
 Using Codex CLI for intelligent generation of role specs and prompt templates.
+Adds repository root to sys.path and includes optional CLI provider recommendations.
 """
 
 from __future__ import annotations
@@ -111,9 +112,11 @@ def get_recommendation_for_role(role_id: str) -> Dict | None:
 
 
 def configure_provider_manually() -> Dict:
-    """Manually configure CLI provider (interactive)."""
+    """
+    Manually configure CLI provider (interactive).
 
-    # Select provider
+    Collects provider, optional model, and optional parameter key/values.
+    """
     print("\nAvailable Providers:")
     print("  [1] codex (default)")
     print("  [2] claude")
@@ -220,7 +223,6 @@ def parse_args(argv: List[str] | None = None) -> argparse.Namespace:
         help="clone: Copy structure exactly; inspire: Use as reference; scratch: Start fresh (default)"
     )
 
-    # === CODEX CONTROL ===
     p.add_argument(
         "--codex-cmd",
         help="Codex CLI command override (default: from env or 'codex exec -')"
@@ -237,7 +239,6 @@ def parse_args(argv: List[str] | None = None) -> argparse.Namespace:
         help="Use Codex to optimize individual role descriptions after generation"
     )
 
-    # === ROLE CONFIGURATION ===
     p.add_argument(
         "--role-count",
         type=int,
@@ -254,7 +255,6 @@ def parse_args(argv: List[str] | None = None) -> argparse.Namespace:
         help="Comma-separated role types that should apply diffs (e.g., 'implementer,tester')"
     )
 
-    # === OUTPUT ===
     p.add_argument(
         "--output-dir",
         default="config",
@@ -276,7 +276,6 @@ def parse_args(argv: List[str] | None = None) -> argparse.Namespace:
         help="Overwrite existing family files"
     )
 
-    # === ADVANCED ===
     p.add_argument(
         "--extra-instructions",
         help="Additional instructions for Codex (e.g., 'Focus on security aspects')"
@@ -303,6 +302,9 @@ def build_family_spec_prompt(
 ) -> str:
     """
     Generate prompt for Codex to create family specification.
+
+    Includes role-count guidance, optional template references, extra instructions,
+    and an output-format reminder for JSON or TOON.
     """
     formatting_cfg = formatting or {}
     output_label = "TOON" if output_format == "toon" else "JSON"
@@ -365,7 +367,6 @@ RULES:
 8. Instances: Default 1, only increase if explicitly needed
 9. System-Rules: Define clear behavioral rules for all agents in this family"""
 
-    # Role count guidance
     if role_count_hint:
         role_count_guidance = f"{role_count_hint} Rollen" if lang == "de" else f"{role_count_hint} roles"
     else:
@@ -378,7 +379,6 @@ RULES:
         format_note=format_note,
     ).replace("__TEMPLATE__", template_text)]
 
-    # Template mode handling
     if template_config and template_mode in ["clone", "inspire"]:
         if template_mode == "clone":
             template_text = "TEMPLATE ZUM KLONEN:\nNutze diese Struktur als Basis und passe sie an:\n" if lang == "de" else \
@@ -405,14 +405,12 @@ RULES:
 
         prompt_parts.append(template_text)
 
-    # Extra instructions
     if extra_instructions:
         if lang == "de":
             prompt_parts.append(f"\nZUSÄTZLICHE ANFORDERUNGEN:\n{extra_instructions}")
         else:
             prompt_parts.append(f"\nADDITIONAL REQUIREMENTS:\n{extra_instructions}")
 
-    # Final output reminder
     if lang == "de":
         prompt_parts.append(f"\nGIB NUR VALIDES {output_label} AUS. KEINE ERKLAERUNGEN AUSSERHALB DES {output_label}.")
     else:
@@ -428,12 +426,11 @@ def build_prompt_template_generator_prompt(
 ) -> str:
     """
     Generate prompt for Codex to create optimal prompt template for a role.
-    """
 
-    # Find dependencies
+    Derives dependency placeholders and output formatting expectations.
+    """
     deps = role_spec.get("depends_on", [])
 
-    # Determine expected placeholders
     expected_placeholders = ["{task}", "{snapshot}"]
     if deps:
         expected_placeholders.extend([f"{{{dep}_summary}}" for dep in deps])
@@ -509,6 +506,7 @@ Text may contain placeholders in curly braces (e.g., {{task}})."""
 
 
 def _has_cycle(node: str, graph: Dict[str, List[str]], visited: set[str], rec_stack: set[str]) -> bool:
+    """Depth-first cycle detection in a dependency graph."""
     visited.add(node)
     rec_stack.add(node)
 
@@ -526,10 +524,11 @@ def _has_cycle(node: str, graph: Dict[str, List[str]], visited: set[str], rec_st
 def validate_dependencies(roles: List[Dict]) -> None:
     """
     Validate dependency graph (no cycles, all deps exist).
+
+    Builds an adjacency list, checks for cycles, and ensures referenced roles exist.
     """
     role_ids = {role["id"] for role in roles}
 
-    # Build adjacency list
     graph = {role["id"]: role.get("depends_on", []) for role in roles}
 
     visited: set[str] = set()
@@ -539,7 +538,6 @@ def validate_dependencies(roles: List[Dict]) -> None:
             if _has_cycle(role_id, graph, visited, rec_stack):
                 raise FamilyValidationError(f"Dependency-Zyklus erkannt in Rolle: {role_id}")
 
-    # Check if all dependencies exist
     for role in roles:
         for dep in role.get("depends_on", []):
             if dep not in role_ids:
@@ -547,6 +545,7 @@ def validate_dependencies(roles: List[Dict]) -> None:
 
 
 def _family_spec_template(lang: str) -> Dict[str, object]:
+    """Return a skeleton family spec payload for prompts."""
     if lang == "de":
         role_description = "<2-4 Saetze: Was macht diese Rolle?>"
         workflow_description = "<2-3 Saetze: Wie arbeiten die Rollen zusammen?>"
@@ -580,9 +579,13 @@ def _family_spec_template(lang: str) -> Dict[str, object]:
 class FamilyCreator:
     """
     Main class for family creation.
+
+    Handles spec generation, optional review/optimization, template creation,
+    provider configuration, and file output.
     """
 
     def __init__(self, args: argparse.Namespace):
+        """Initialize creator state and CLI configuration."""
         self.args = args
         self.config_path = Path(args.output_dir).resolve()
         defaults_path = get_static_config_dir() / "defaults.json"
@@ -590,7 +593,6 @@ class FamilyCreator:
         self.formatting_cfg = dict(defaults.get("formatting") or {})
         self.output_format = resolve_output_format({"formatting": self.formatting_cfg})
 
-        # CLI Client Setup via CLIAdapter
         if args.codex_cmd:
             self.codex_cmd = parse_cmd(args.codex_cmd)
         else:
@@ -604,43 +606,39 @@ class FamilyCreator:
     def run(self) -> None:
         """
         Main workflow.
+
+        Loads optional templates, generates specs, supports review/optimization,
+        builds prompt templates, configures providers, and writes outputs.
         """
-        # PHASE 1: Load template (if requested)
         template_config = None
         if self.args.template_from:
             template_config = self._load_template(self.args.template_from)
             print(f"Template geladen: {self.args.template_from}")
 
-        # PHASE 2: Generate family spec
         print("Generiere Familie-Spezifikation via Codex...")
         family_spec = self._generate_family_spec(template_config)
 
-        # PHASE 3: Interactive review (optional)
         if self.args.interactive:
             family_spec = self._interactive_review(family_spec)
 
-        # PHASE 4: Dry-run check
         if self.args.dry_run:
             print(json.dumps(family_spec, indent=2, ensure_ascii=False))
             return
 
-        # PHASE 5: Optimize role descriptions (optional)
         if self.args.optimize_roles:
             print("Optimiere Rollen-Beschreibungen...")
             family_spec = self._optimize_role_descriptions(family_spec)
 
-        # PHASE 6: Generate prompt templates
         print("Generiere Prompt-Templates für Rollen...")
         family_spec = self._generate_prompt_templates(family_spec)
 
-        # PHASE 6.5: Configure CLI providers
         family_spec = self._configure_cli_providers(family_spec)
 
-        # PHASE 7: Write files
         print("Schreibe Familie-Konfiguration...")
         self._write_family_files(family_spec)
 
     def _extract_json(self, text: str) -> str:
+        """Extract JSON payload from a markdown response."""
         return extract_payload_from_markdown(text, "json")
 
         print(f"\n✓ Familie erstellt: {family_spec['family_id']}")
@@ -651,7 +649,6 @@ class FamilyCreator:
         """
         Load template config from known family or path.
         """
-        # Known families
         known_families = ["developer", "designer", "docs", "qa", "devops",
                          "security", "product", "data", "research"]
 
@@ -667,7 +664,9 @@ class FamilyCreator:
 
     def _generate_family_spec(self, template_config: Dict | None) -> Dict:
         """
-        Generate family spec via Codex.
+        Generate family spec via Codex and normalize it.
+
+        Parses output, applies overrides, validates, and optionally clones structure.
         """
         prompt = build_family_spec_prompt(
             description=self.args.description,
@@ -682,7 +681,6 @@ class FamilyCreator:
 
         stdout = call_codex(prompt, self.codex_cmd, self.timeout_sec)
 
-        # Parse output
         try:
             payload_text = extract_payload_from_markdown(stdout, self.output_format)
             if self.output_format == "toon":
@@ -694,7 +692,6 @@ class FamilyCreator:
             print(f"Fehler: Codex lieferte invalides {self.output_format.upper()}:\n{stdout}", file=sys.stderr)
             raise RuntimeError(f"{self.output_format.upper()} Parse Error: {exc}") from exc
 
-        # Apply overrides
         if self.args.family_id:
             family_spec["family_id"] = slugify(self.args.family_id)
         else:
@@ -706,10 +703,8 @@ class FamilyCreator:
         if self.args.system_rules:
             family_spec["system_rules"] = self.args.system_rules
 
-        # Validation
         self._validate_family_spec(family_spec)
 
-        # Clone from template if mode is clone
         if template_config and self.args.template_mode == "clone":
             family_spec = self._clone_from_template(template_config, family_spec)
 
@@ -717,7 +712,7 @@ class FamilyCreator:
 
     def _validate_family_spec(self, spec: Dict) -> None:
         """
-        Validate family spec structure.
+        Validate family spec structure, roles, and dependencies.
         """
         required = ["family_id", "roles", "final_role_id"]
         for field in required:
@@ -727,30 +722,27 @@ class FamilyCreator:
         if not spec["roles"]:
             raise FamilyValidationError("Familie muss mindestens eine Rolle haben")
 
-        # Validate roles
         role_ids = {role["id"] for role in spec["roles"]}
 
         for role in spec["roles"]:
             if "id" not in role or "description" not in role:
                 raise FamilyValidationError(f"Rolle fehlt erforderliche Felder: {role}")
 
-        # Validate dependencies
         validate_dependencies(spec["roles"])
 
-        # Validate final_role_id
         if spec["final_role_id"] not in role_ids:
             raise FamilyValidationError(f"final_role_id verweist auf unbekannte Rolle: {spec['final_role_id']}")
 
     def _clone_from_template(self, template_config: Dict, spec: Dict) -> Dict:
         """
-        Clone family structure from template.
+        Clone family structure from template with remapped role IDs.
+
+        Resets prompt_template to ensure regenerated templates.
         """
-        # Map old role IDs to new
         role_id_map = {}
         cloned_roles = []
 
         for idx, template_role_entry in enumerate(template_config["roles"]):
-            # Load template role
             template_role_path = self.config_path / template_role_entry["file"]
 
             if not template_role_path.exists():
@@ -759,7 +751,6 @@ class FamilyCreator:
 
             template_role = load_json(template_role_path)
 
-            # Create new role with mapped ID
             if idx < len(spec["roles"]):
                 new_id = spec["roles"][idx]["id"]
             else:
@@ -772,7 +763,7 @@ class FamilyCreator:
                 "name": spec["roles"][idx].get("name", template_role["name"]) if idx < len(spec["roles"]) else template_role["name"],
                 "role_label": spec["roles"][idx].get("role_label", template_role["role"]) if idx < len(spec["roles"]) else template_role["role"],
                 "description": spec["roles"][idx]["description"] if idx < len(spec["roles"]) else template_role.get("description", ""),
-                "prompt_template": "",  # Will be regenerated
+                "prompt_template": "",
                 "apply_diff": template_role_entry.get("apply_diff", False),
                 "depends_on": template_role_entry.get("depends_on", []),
                 "instances": template_role_entry.get("instances", 1),
@@ -782,7 +773,6 @@ class FamilyCreator:
 
             cloned_roles.append(cloned_role)
 
-        # Map dependencies
         for role in cloned_roles:
             role["depends_on"] = [role_id_map.get(dep, dep) for dep in role["depends_on"]]
 
@@ -793,9 +783,8 @@ class FamilyCreator:
 
     def _interactive_review(self, spec: Dict) -> Dict:
         """
-        Interactive review with edit capability.
+        Interactive review with edit capability and re-validation.
         """
-        # Write spec to temp file
         with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False, encoding='utf-8') as f:
             json.dump(spec, f, indent=2, ensure_ascii=False)
             temp_path = f.name
@@ -803,17 +792,14 @@ class FamilyCreator:
         print(f"\nÖffne Editor für Review: {temp_path}")
         print("Speichere und schließe den Editor, um fortzufahren.")
 
-        # Open editor (use EDITOR env var or fallback)
         editor = os.environ.get("EDITOR", "notepad" if os.name == "nt" else "nano")
         subprocess.run([editor, temp_path], check=True)
 
-        # Load edited version
         with open(temp_path, 'r', encoding='utf-8') as f:
             edited_spec = json.load(f)
 
         os.unlink(temp_path)
 
-        # Re-validate
         self._validate_family_spec(edited_spec)
 
         return edited_spec
@@ -873,25 +859,21 @@ class FamilyCreator:
         configure = input("\nConfigure CLI providers? (y/N): ").strip().lower()
 
         if configure != 'y':
-            # Set all to codex (default)
             print("[INFO] Skipping CLI provider configuration. All roles will use default (codex).")
             for role in spec["roles"]:
                 role['cli_provider'] = 'codex'
             return spec
 
-        # Interactive configuration for each role
         print(f"\n{len(spec['roles'])} roles to configure.\n")
 
         for role in spec["roles"]:
             role_id = role['id']
 
-            # Show role info
             print(f"\n{'=' * 60}")
             print(f"Role: {role_id}")
             print(f"Description: {role.get('description', 'N/A')[:80]}...")
             print(f"{'=' * 60}")
 
-            # Show recommendation
             recommendation = get_recommendation_for_role(role_id)
             if recommendation:
                 rec_provider = recommendation.get('cli_provider', 'codex')
@@ -908,7 +890,6 @@ class FamilyCreator:
                 print(f"Recommendation: codex (default)")
                 recommendation = {'cli_provider': 'codex'}
 
-            # Options
             print("\nOptions:")
             print("  [1] Use codex (default)")
             print("  [2] Configure manually")
@@ -918,23 +899,19 @@ class FamilyCreator:
             choice = input("\nSelect option (1-3): ").strip()
 
             if choice == '1':
-                # Use codex
                 role['cli_provider'] = 'codex'
                 print("[OK] Using codex")
 
             elif choice == '2':
-                # Configure manually
                 config = configure_provider_manually()
                 role.update(config)
                 print(f"[OK] Configured: {config}")
 
             elif choice == '3' and recommendation:
-                # Use recommendation
                 role.update(recommendation)
                 print("[OK] Using recommendation")
 
             else:
-                # Default to codex
                 role['cli_provider'] = 'codex'
                 print("[WARNING] Invalid choice, using default (codex)")
 
@@ -946,23 +923,20 @@ class FamilyCreator:
 
     def _write_family_files(self, spec: Dict) -> None:
         """
-        Write all files (main.json + role JSONs).
+        Write all files (main.json + role JSONs) with overwrite protection.
         """
         family_id = slugify(spec["family_id"])
         roles_dir = self.config_path / f"{family_id}_roles"
         main_path = self.config_path / f"{family_id}_main.json"
 
-        # Check if family already exists
         if main_path.exists() and not self.args.force:
             raise FileExistsError(
                 f"Familie existiert bereits: {main_path}\n"
                 f"Nutze --force zum Überschreiben"
             )
 
-        # Create roles directory
         roles_dir.mkdir(parents=True, exist_ok=True)
 
-        # Write role JSONs
         role_entries = []
         for role in spec["roles"]:
             role_id = role["id"]
@@ -977,7 +951,6 @@ class FamilyCreator:
 
             write_json(role_file, role_json)
 
-            # Create entry for main.json
             entry = {
                 "id": role_id,
                 "file": f"{family_id}_agents/{role_id}.json",
@@ -994,7 +967,6 @@ class FamilyCreator:
             if role.get("timeout_sec"):
                 entry["timeout_sec"] = role["timeout_sec"]
 
-            # Add CLI provider configuration
             if role.get("cli_provider"):
                 entry["cli_provider"] = role["cli_provider"]
 
@@ -1006,7 +978,6 @@ class FamilyCreator:
 
             role_entries.append(entry)
 
-        # Write main.json
         main_config = self._build_main_config(spec, role_entries)
         write_json(main_path, main_config)
 

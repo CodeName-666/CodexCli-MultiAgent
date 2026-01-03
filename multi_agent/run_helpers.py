@@ -1,3 +1,5 @@
+"""Helpers to run the pipeline with optional task splitting."""
+
 from __future__ import annotations
 
 import argparse
@@ -28,6 +30,7 @@ from .utils import now_stamp, parse_cmd, summarize_text
 
 
 async def run_split(pipeline, args: argparse.Namespace, cfg) -> int:
+    """Run the pipeline with task splitting and resume support."""
     workdir = Path(args.dir).resolve()
     try:
         task_text, task_source = load_task_text(args.task, workdir)
@@ -153,6 +156,7 @@ async def run_split(pipeline, args: argparse.Namespace, cfg) -> int:
 
 
 def run_pipeline(args: argparse.Namespace, cfg) -> int:
+    """Run the pipeline entrypoint with optional task splitting."""
     pipeline = build_pipeline()
     try:
         split_enabled = bool(args.task_split) or bool(cfg.task_split.get("enabled", False))

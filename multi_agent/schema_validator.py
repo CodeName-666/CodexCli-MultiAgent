@@ -1,3 +1,5 @@
+"""Schema validation utilities for main and role configuration files."""
+
 from __future__ import annotations
 
 import json
@@ -6,10 +8,12 @@ from typing import Dict, Tuple
 
 
 def _load_json(path: Path) -> Dict[str, object]:
+    """Load JSON content from a file path."""
     return json.loads(path.read_text(encoding="utf-8"))
 
 
 def _validate_required(data: Dict[str, object], keys: list[str]) -> Tuple[bool, str]:
+    """Return whether all required keys exist, with an error message if not."""
     for key in keys:
         if key not in data:
             return False, f"missing key: {key}"
@@ -17,6 +21,7 @@ def _validate_required(data: Dict[str, object], keys: list[str]) -> Tuple[bool, 
 
 
 def _validate_prompt_template(value: object) -> Tuple[bool, str]:
+    """Validate prompt_template as a string or list of strings."""
     if isinstance(value, str):
         return True, ""
     if isinstance(value, list):
@@ -27,6 +32,7 @@ def _validate_prompt_template(value: object) -> Tuple[bool, str]:
 
 
 def validate_config(config_path: Path) -> Tuple[bool, str]:
+    """Validate a main config file and referenced role files."""
     try:
         cfg = _load_json(config_path)
     except FileNotFoundError as exc:
@@ -86,7 +92,11 @@ def validate_config(config_path: Path) -> Tuple[bool, str]:
 
 
 def _validate_sharding_config(role_entry: Dict[str, object], role_defaults: Dict[str, object]) -> Tuple[bool, str]:
-    """Validate sharding-related configuration fields."""
+    """
+    Validate sharding-related configuration fields.
+
+    Checks enum values and numeric ranges for sharding settings.
+    """
     shard_mode = role_entry.get("shard_mode", role_defaults.get("shard_mode", "none"))
     overlap_policy = role_entry.get("overlap_policy", role_defaults.get("overlap_policy", "warn"))
 

@@ -1,3 +1,5 @@
+"""Pipeline orchestration for multi-agent runs."""
+
 from __future__ import annotations
 
 import argparse
@@ -40,6 +42,7 @@ from .streaming import build_token_counter
 
 @dataclass
 class PipelineRunContext:
+    """Runtime context shared across pipeline execution steps."""
     args: argparse.Namespace
     cfg: AppConfig
     workdir: Path
@@ -69,15 +72,19 @@ class PipelineRunContext:
 
 
 class Pipeline:
+    """Coordinate the end-to-end multi-agent run lifecycle."""
+
     def __init__(
         self,
         snapshotter: BaseSnapshotter,
         diff_applier: BaseDiffApplier,
     ) -> None:
+        """Store dependencies for snapshotting and diff application."""
         self._snapshotter = snapshotter
         self._diff_applier = diff_applier
 
     async def run(self, args: argparse.Namespace, cfg: AppConfig, run_id_override: str | None = None) -> int:
+        """Execute a pipeline run and return the final exit code."""
         workdir = Path(args.dir).resolve()
         workdir.mkdir(parents=True, exist_ok=True)
 
@@ -189,6 +196,7 @@ class Pipeline:
         workdir: Path,
         run_dir: Path,
     ) -> ProgressReporter:
+        """Create and start a progress reporter for the run."""
         apply_roles = [role for role in cfg.roles if role.apply_diff]
         total_agents = sum(role.instances for role in cfg.roles)
         apply_instances = sum(role.instances for role in apply_roles if role.id in apply_role_ids)
@@ -206,6 +214,7 @@ class Pipeline:
         task_full: str,
         task_display: str,
     ) -> Dict[str, object]:
+        """Assemble initial run metadata for logging."""
         return {
             "run_id": run_id,
             "start_time": time.time(),
@@ -223,6 +232,7 @@ class Pipeline:
         }
 
     async def _execute_run(self, ctx: PipelineRunContext) -> int:
+        """Execute a run with cancellation handling."""
         def on_cancel() -> None:
             ctx.abort_run = True
             ctx.cancelled = True
@@ -235,6 +245,7 @@ class Pipeline:
         return await self._execute_run_inner(ctx)
 
     async def _execute_run_inner(self, ctx: PipelineRunContext) -> int:
+        """Run the main pipeline steps for a given context."""
         if ctx.resume_state is not None:
             snapshot_text = self._load_resume_snapshot(ctx)
             ctx.run_meta["snapshot"] = {
@@ -255,6 +266,7 @@ class Pipeline:
         return self._final_exit_code(ctx)
 
     def _snapshot_workspace(self, ctx: PipelineRunContext) -> str:
+        """Capture and persist a workspace snapshot."""
         ctx.reporter.step("Snapshot", "Workspace wird gescannt", advance=1)
         snapshot_result = self._snapshotter.build_snapshot(
             ctx.workdir,
@@ -279,6 +291,7 @@ class Pipeline:
         return snapshot_text
 
     async def _initialize_coordination(self, ctx: PipelineRunContext, snapshot_text: str) -> None:
+        """Initialize task board, coordination log, and context values."""
         coordination_cfg = ctx.cfg.coordination
         task_board_path = self._resolve_coordination_path(
             ctx.workdir, ctx.run_dir, coordination_cfg.task_board, ctx.run_id, default_name="task_board.json"
@@ -312,6 +325,7 @@ class Pipeline:
         coordination_log.append("orchestrator", "init", {"run_id": ctx.run_id})
 
     async def _run_roles(self, ctx: PipelineRunContext) -> None:
+        """Execute roles in dependency order until completion."""
         completed_roles: set[str] = set(ctx.completed_roles)
         pending_roles: Dict[str, RoleConfig] = {
             role.id: role for role in ctx.cfg.roles if role.id not in completed_roles
@@ -486,7 +500,11 @@ class Pipeline:
         instance_id: int,
         shard_plan: ShardPlan | None,
     ) -> dict:
-        """Setup context for a specific role instance."""
+        """
+        Setup context for a specific role instance.
+
+        Adds shard-specific fields when sharding is enabled.
+        """
         instance_label = f"{role_cfg.id}#{instance_id}"
         local_context = dict(ctx.context)
         local_context["role_id"] = role_cfg.id
@@ -551,7 +569,12 @@ class Pipeline:
         role_cfg: RoleConfig,
         allow_rich: bool,
     ) -> tuple[str, bool]:
-        """Execute a single role with all its instances."""
+        """
+        Execute a single role with all its instances.
+
+        Handles sharding, skip checks, prompt validation, instance execution,
+        output aggregation, diff application, and metadata updates.
+        """
         if ctx.task_board is None or ctx.coordination_log is None:
             raise RuntimeError("Coordination not initialized")
         task_board = ctx.task_board
@@ -646,7 +669,12 @@ class Pipeline:
         streaming_enabled: bool,
         use_rich: bool,
     ) -> AgentResult:
-        """Execute a single instance of a role with retry logic."""
+        """
+        Execute a single instance of a role with retry logic.
+
+        Builds prompts, claims coordination tasks, runs the agent with optional
+        streaming, logs results, and finalizes instance state.
+        """
         if ctx.task_board is None or ctx.coordination_log is None:
             raise RuntimeError("Coordination not initialized")
         task_board = ctx.task_board
@@ -799,6 +827,7 @@ class Pipeline:
         return last_result
 
     def _apply_end_diffs(self, ctx: PipelineRunContext) -> None:
+        """Apply diffs for all roles when running in end-apply mode."""
         for role_cfg in ctx.cfg.roles:
             if not role_cfg.apply_diff or role_cfg.id not in ctx.apply_role_ids:
                 continue
@@ -830,6 +859,7 @@ class Pipeline:
                         break
 
     def _write_apply_log(self, ctx: PipelineRunContext) -> None:
+        """Persist diff apply log lines to the run directory."""
         if ctx.args.apply and ctx.args.apply_mode == "end":
             write_text(
                 ctx.run_dir / str(ctx.cfg.paths.apply_log_filename),
@@ -842,6 +872,7 @@ class Pipeline:
             )
 
     def _render_summary(self, ctx: PipelineRunContext) -> None:
+        """Print a human-readable run summary and final output snippet."""
         ctx.reporter.step("Summary", "Ausgaben werden zusammengefasst", advance=1)
         print("\n" + ctx.cfg.messages["run_complete"])
         print(ctx.cfg.messages["workspace_label"].format(workspace=ctx.workdir))
@@ -881,6 +912,7 @@ class Pipeline:
             print("")
 
     def _final_exit_code(self, ctx: PipelineRunContext) -> int:
+        """Return the final process exit code for the run."""
         if ctx.cancelled:
             ctx.reporter.finish("Abgebrochen")
             return 130
@@ -893,6 +925,7 @@ class Pipeline:
 
     @staticmethod
     def _finalize_run(ctx: PipelineRunContext, status: str, error_detail: str) -> None:
+        """Finalize run metadata, write log artifacts, and emit final events."""
         status_value = status
         if ctx.cancelled and status == "ok":
             status_value = "cancelled"
@@ -911,6 +944,7 @@ class Pipeline:
         results: List[AgentResult],
         transform,
     ) -> str:
+        """Combine per-instance outputs into a single block."""
         blocks: List[str] = []
         max_output_chars = None
         if isinstance(role_cfg, RoleConfig):
@@ -926,10 +960,12 @@ class Pipeline:
 
     @staticmethod
     def _resume_state_path(run_dir: Path) -> Path:
+        """Return the resume state file path for a run directory."""
         return run_dir / "resume.json"
 
     @staticmethod
     def _resolve_resume_dir(workdir: Path, cfg: AppConfig, resume_run: str) -> Path:
+        """Resolve the resume run directory from a path or run id."""
         resume_path = Path(resume_run)
         if resume_path.exists() and resume_path.is_dir():
             return resume_path
@@ -937,6 +973,7 @@ class Pipeline:
 
     @staticmethod
     def _load_resume_state(run_dir: Path) -> Dict[str, object]:
+        """Load and validate resume state JSON from disk."""
         state_path = Pipeline._resume_state_path(run_dir)
         if not state_path.exists():
             raise FileNotFoundError(f"Fehler: Resume-State nicht gefunden: {state_path}")
@@ -948,6 +985,7 @@ class Pipeline:
 
     @staticmethod
     def _write_resume_state(ctx: PipelineRunContext) -> None:
+        """Write resume state to disk for interrupted runs."""
         context = {
             key: value
             for key, value in ctx.context.items()
@@ -970,6 +1008,7 @@ class Pipeline:
 
     @staticmethod
     def _load_resume_snapshot(ctx: PipelineRunContext) -> str:
+        """Load a snapshot from the run directory for resume."""
         snapshot_path = ctx.run_dir / str(ctx.cfg.paths.snapshot_filename)
         if not snapshot_path.exists():
             raise FileNotFoundError(f"Fehler: Snapshot fehlt: {snapshot_path}")
@@ -977,6 +1016,7 @@ class Pipeline:
 
     @staticmethod
     def _apply_resume_context(ctx: PipelineRunContext) -> None:
+        """Merge stored context from a resume state into the run context."""
         if not ctx.resume_state:
             return
         resume_context = ctx.resume_state.get("context") or {}
@@ -992,6 +1032,7 @@ class Pipeline:
         run_id: str,
         default_name: str,
     ) -> Path:
+        """Resolve coordination log/task board path from a template."""
         raw = (template or "").strip()
         if not raw:
             return run_dir / default_name
@@ -1003,6 +1044,7 @@ class Pipeline:
 
     @staticmethod
     def _build_output_filename(cfg: AppConfig, role_cfg, instance_id: int) -> str:
+        """Build an output filename for a role instance."""
         raw_pattern = str(cfg.outputs.pattern or "").strip()
         if not raw_pattern:
             if role_cfg.instances > 1:
@@ -1016,6 +1058,7 @@ class Pipeline:
 
     @staticmethod
     def _build_task_board(cfg: AppConfig) -> List[Dict[str, object]]:
+        """Build initial task board entries for all role instances."""
         tasks: List[Dict[str, object]] = []
         role_instance_ids = {
             role.id: [f"{role.id}#{idx}" for idx in range(1, role.instances + 1)]
@@ -1040,6 +1083,7 @@ class Pipeline:
 
     @staticmethod
     def _resolve_apply_role_ids(args: argparse.Namespace, cfg: AppConfig) -> set[str]:
+        """Resolve which role ids should have diffs applied."""
         if not args.apply_roles:
             return {role.id for role in cfg.roles if role.apply_diff}
         raw: List[str] = []
@@ -1062,6 +1106,7 @@ class Pipeline:
         apply_log_lines: List[str],
         confirm: bool,
     ) -> tuple[bool, bool, str]:
+        """Apply diffs for a role and return status flags and last diff text."""
         applied_ok = False
         had_error = False
         last_diff_text = ""
@@ -1093,6 +1138,7 @@ class Pipeline:
 
     @staticmethod
     def _output_ok(res: AgentResult, role_cfg: RoleConfig) -> bool:
+        """Return True if output is successful and meets expected sections."""
         if res.returncode != 0:
             return False
         if not res.stdout.strip():
@@ -1104,6 +1150,7 @@ class Pipeline:
 
     @staticmethod
     def _should_retry(res: AgentResult, role_cfg: RoleConfig) -> bool:
+        """Return True if the result should be retried."""
         if res.returncode == 124:
             return True
         if not res.stdout.strip():
@@ -1115,6 +1162,7 @@ class Pipeline:
 
     @staticmethod
     def _repair_note(role_cfg: RoleConfig, stdout: str) -> str:
+        """Build a repair note for missing output sections."""
         if not role_cfg.expected_sections:
             return ""
         ok, missing = validate_output_sections(stdout, role_cfg.expected_sections)
@@ -1130,6 +1178,7 @@ class Pipeline:
         task_limits: Dict[str, object],
         formatting: Dict[str, object] | None = None,
     ) -> Dict[str, object]:
+        """Normalize and persist task input with optional format conversion."""
         task = (raw_task or "").strip()
         task_source = ""
         task_full = task
@@ -1231,6 +1280,7 @@ class Pipeline:
         shrink_factor: float = 1.0,
         repair_missing: str = "",
     ) -> tuple[str, int, bool, int, int]:
+        """Render a role prompt and enforce prompt size limits."""
         max_prompt_chars = role_cfg.max_prompt_chars or int(cfg.role_defaults.get("max_prompt_chars", 0) or 0)
         prompt_limits = cfg.prompt_limits or {}
         token_chars = int(prompt_limits.get("token_chars", DEFAULT_TOKEN_CHARS) or DEFAULT_TOKEN_CHARS)
@@ -1294,6 +1344,7 @@ class Pipeline:
 
     @staticmethod
     def _effective_prompt_chars(max_prompt_chars: int, max_prompt_tokens: int, token_chars: int) -> int:
+        """Compute an effective char limit from char and token caps."""
         token_limit_chars = max_prompt_tokens * max(1, token_chars) if max_prompt_tokens > 0 else 0
         if max_prompt_chars > 0 and token_limit_chars > 0:
             return min(max_prompt_chars, token_limit_chars)
@@ -1303,6 +1354,7 @@ class Pipeline:
     def _prompt_within_limits(
         prompt: str, max_prompt_chars: int, max_prompt_tokens: int, token_chars: int
     ) -> bool:
+        """Return True if prompt stays within size limits."""
         if max_prompt_chars > 0 and len(prompt) > max_prompt_chars:
             return False
         if max_prompt_tokens > 0 and estimate_tokens(prompt, token_chars) > max_prompt_tokens:
@@ -1313,6 +1365,7 @@ class Pipeline:
     def _prompt_overflow(
         prompt: str, max_prompt_chars: int, max_prompt_tokens: int, token_chars: int
     ) -> int:
+        """Return overflow amount in characters for a prompt."""
         overflow_chars = 0
         if max_prompt_chars > 0 and len(prompt) > max_prompt_chars:
             overflow_chars = len(prompt) - max_prompt_chars
@@ -1329,6 +1382,7 @@ class Pipeline:
 
         All CLI providers (codex, claude, gemini) are configured via cli_config.json.
         The role can specify cli_provider, model, and cli_parameters.
+        Applies provider-specific timeout multipliers and stdin mode selection.
         """
         timeout_sec = role_cfg.timeout_sec or int(default_timeout)
         if timeout_sec <= 0:
@@ -1360,6 +1414,7 @@ class Pipeline:
 
     @staticmethod
     def _streaming_runtime_enabled(ctx: PipelineRunContext) -> bool:
+        """Return True when streaming output is enabled and supported."""
         if getattr(ctx.args, "no_streaming", False):
             return False
         streaming_cfg = ctx.cfg.streaming
@@ -1375,6 +1430,7 @@ class Pipeline:
         role_cfg: RoleConfig,
         allow_rich: bool,
     ) -> tuple[bool, bool]:
+        """Resolve streaming enabled flag and rich display usage."""
         if not Pipeline._streaming_runtime_enabled(ctx):
             return False, False
         use_rich = bool(allow_rich and role_cfg.instances == 1)
@@ -1382,6 +1438,7 @@ class Pipeline:
 
     @staticmethod
     def _review_has_critical(feedback_cfg: Dict[str, object], reviewer_output: str) -> bool:
+        """Return True if reviewer output contains critical markers."""
         if not feedback_cfg.get("enabled", False):
             return False
         patterns = [str(pat) for pat in feedback_cfg.get("critical_patterns", [])]
@@ -1390,6 +1447,7 @@ class Pipeline:
 
     @staticmethod
     async def _mark_role_skipped(role_cfg: RoleConfig, task_board: TaskBoard, coordination_log: CoordinationLog) -> None:
+        """Mark all role instances as skipped in coordination logs."""
         for instance_id in range(1, role_cfg.instances + 1):
             instance_label = f"{role_cfg.id}#{instance_id}"
             await task_board.update_task(
@@ -1404,6 +1462,7 @@ class Pipeline:
 
     @staticmethod
     def _effective_deps(cfg: AppConfig, role_cfg: RoleConfig) -> List[str]:
+        """Return the effective dependency list for a role."""
         if role_cfg.depends_on:
             return role_cfg.depends_on
         deps = []
@@ -1415,12 +1474,14 @@ class Pipeline:
 
     @staticmethod
     def _confirm_diff(label: str, diff_text: str) -> bool:
+        """Prompt the user to confirm diff application."""
         print(f"\n--- Diff Preview ({label}) ---\n{diff_text}\n")
         answer = input("Apply this diff? [y/N]: ").strip().lower()
         return answer == "y"
 
     @staticmethod
     def _build_json_logger(cfg: AppConfig, workdir: Path, run_id: str, run_dir: Path) -> JsonRunLogger:
+        """Create a JSONL logger for run events."""
         logging_cfg = cfg.logging or {}
         enabled = bool(logging_cfg.get("jsonl_enabled", False))
         raw_path = str(logging_cfg.get("jsonl_path") or "").replace("<run_id>", run_id)
@@ -1535,6 +1596,7 @@ class Pipeline:
 
 
 def build_pipeline() -> Pipeline:
+    """Build a Pipeline with default snapshot and diff handlers."""
     return Pipeline(
         snapshotter=WorkspaceSnapshotter(),
         diff_applier=UnifiedDiffApplier(),

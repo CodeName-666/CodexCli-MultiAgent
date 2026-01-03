@@ -1,7 +1,7 @@
 """
-CLI Adapter System for Multi-Provider Support
+CLI adapter system for multi-provider support.
 
-Supports: Codex CLI, Claude Code CLI, Google Gemini CLI
+Supports Codex CLI, Claude Code CLI, and Google Gemini CLI.
 """
 from __future__ import annotations
 
@@ -15,6 +15,7 @@ class CLIProvider:
     """Represents a single CLI provider configuration."""
 
     def __init__(self, provider_id: str, config: Dict[str, Any]) -> None:
+        """Initialize provider metadata from a configuration mapping."""
         self.id = provider_id
         self.name = config.get("name", provider_id)
         self.description = config.get("description", "")
@@ -43,6 +44,10 @@ class CLIProvider:
             Tuple of (command_list, stdin_content)
             - command_list: Full command with all parameters
             - stdin_content: Content to send via stdin (None if prompt is in args)
+
+        Notes:
+            Resolves model aliases, appends custom parameters, and chooses between
+            stdin or argument-based prompt delivery based on provider settings.
         """
         # Start with base command from env or default
         cmd = self._get_base_command()
@@ -121,6 +126,7 @@ class CLIAdapter:
     """
 
     def __init__(self, cli_config_path: Path) -> None:
+        """Initialize the adapter and load provider configurations."""
         self.config_path = cli_config_path
         self.providers: Dict[str, CLIProvider] = {}
         self.default_provider_id = "codex"
@@ -129,7 +135,7 @@ class CLIAdapter:
         self._load_config()
 
     def _load_config(self) -> None:
-        """Load CLI provider configurations from cli_config.json."""
+        """Load CLI provider configurations from cli_config.json, creating defaults if needed."""
         if not self.config_path.exists():
             # Create default config if missing
             self._create_default_config()

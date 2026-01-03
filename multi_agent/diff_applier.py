@@ -1,3 +1,5 @@
+"""Apply unified diffs to files with safety checks and optional git fallback."""
+
 from __future__ import annotations
 
 import abc
@@ -10,8 +12,10 @@ from typing import Dict, List, Tuple
 
 
 class BaseDiffApplier(abc.ABC):
+    """Abstract interface for diff extraction and application."""
     @abc.abstractmethod
     def extract_diff(self, text: str) -> str:
+        """Extract a unified diff string from raw agent output."""
         raise NotImplementedError
 
     @abc.abstractmethod
@@ -23,10 +27,12 @@ class BaseDiffApplier(abc.ABC):
         diff_safety: Dict[str, object],
         diff_apply: Dict[str, object],
     ) -> Tuple[bool, str]:
+        """Apply a diff to the workspace and return (ok, message)."""
         raise NotImplementedError
 
 
 class UnifiedDiffApplier(BaseDiffApplier):
+    """Conservative unified-diff applier with optional git fallback."""
     DIFF_GIT_HEADER_RE = re.compile(r"^diff --git a/(.+?) b/(.+?)$", re.MULTILINE)
     HUNK_RE = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@.*$", re.MULTILINE)
 
@@ -79,6 +85,7 @@ class UnifiedDiffApplier(BaseDiffApplier):
         diff_messages: Dict[str, str],
         diff_safety: Dict[str, object],
     ) -> Tuple[bool, str]:
+        """Validate touched paths against allow/block lists."""
         blocklist = [str(item) for item in diff_safety.get("blocklist", [])]
         allowlist = [str(item) for item in diff_safety.get("allowlist", [])]
         if not blocklist:
@@ -95,6 +102,7 @@ class UnifiedDiffApplier(BaseDiffApplier):
 
     @staticmethod
     def _is_allowed(rel_path: str, abs_path: str, allowlist: List[str]) -> bool:
+        """Return True if a path matches any allowlist pattern."""
         for pattern in allowlist:
             pattern = str(Path(pattern).expanduser()).replace("\\", "/")
             if fnmatch.fnmatch(rel_path, pattern) or fnmatch.fnmatch(abs_path, pattern):
@@ -103,6 +111,7 @@ class UnifiedDiffApplier(BaseDiffApplier):
 
     @staticmethod
     def _is_blocked(rel_path: str, abs_path: str, blocklist: List[str]) -> bool:
+        """Return True if a path matches any blocklist pattern."""
         for pattern in blocklist:
             pattern = str(Path(pattern).expanduser()).replace("\\", "/")
             if fnmatch.fnmatch(rel_path, pattern) or fnmatch.fnmatch(abs_path, pattern):
@@ -111,6 +120,7 @@ class UnifiedDiffApplier(BaseDiffApplier):
 
     @staticmethod
     def _should_use_git(diff_apply: Dict[str, object], workdir: Path) -> bool:
+        """Return True when git apply is enabled and available."""
         if not diff_apply.get("use_git", True):
             return False
         if not (workdir / ".git").exists():
@@ -124,6 +134,7 @@ class UnifiedDiffApplier(BaseDiffApplier):
         diff_messages: Dict[str, str],
         diff_apply: Dict[str, object],
     ) -> Tuple[bool, str]:
+        """Apply a diff via git apply with optional 3-way fallback."""
         check = subprocess.run(
             ["git", "apply", "--check", "-"],
             input=diff_text,
@@ -159,6 +170,7 @@ class UnifiedDiffApplier(BaseDiffApplier):
         return False, str(diff_messages["git_apply_failed"]).format(error=reason)
 
     def _split_diff_by_file(self, diff_text: str, diff_messages: Dict[str, str]) -> List[Tuple[str, str]]:
+        """Split a unified diff into per-file blocks."""
         matches = list(self.DIFF_GIT_HEADER_RE.finditer(diff_text))
         if not matches:
             raise ValueError(str(diff_messages["no_git_header"]))
@@ -172,7 +184,7 @@ class UnifiedDiffApplier(BaseDiffApplier):
         return blocks
 
     def _parse_old_new_paths(self, file_block: str) -> Tuple[str, str]:
-        # sucht --- a/... und +++ b/...
+        """Parse old/new markers from a diff file block."""
         old = ""
         new = ""
         for line in file_block.splitlines():
@@ -191,6 +203,7 @@ class UnifiedDiffApplier(BaseDiffApplier):
         file_block: str,
         diff_messages: Dict[str, str],
     ) -> Tuple[bool, str]:
+        """Apply a file-level diff block with /dev/null handling."""
         target = workdir / rel_path
 
         old_marker, new_marker = self._parse_old_new_paths(file_block)

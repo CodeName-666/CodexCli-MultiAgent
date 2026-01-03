@@ -40,7 +40,7 @@ class TestValidateDependencies:
             {"id": "b", "depends_on": ["a"]},
             {"id": "c", "depends_on": ["b"]}
         ]
-        validate_dependencies(roles)  # Should not raise
+        validate_dependencies(roles)
 
     def test_with_cycle(self):
         """Circular dependencies should raise error."""
@@ -77,7 +77,7 @@ class TestValidateDependencies:
             {"id": "c", "depends_on": ["a"]},
             {"id": "d", "depends_on": ["b", "c"]}
         ]
-        validate_dependencies(roles)  # Should not raise
+        validate_dependencies(roles)
 
 
 class TestExtractJson:
@@ -268,7 +268,7 @@ class TestFamilyCreator:
             "final_role_id": "b"
         }
 
-        creator._validate_family_spec(spec)  # Should not raise
+        creator._validate_family_spec(spec)
 
     def test_validate_family_spec_missing_field(self):
         """Missing required field should raise."""
@@ -281,7 +281,6 @@ class TestFamilyCreator:
 
         spec = {
             "family_id": "test",
-            # Missing "roles"
             "final_role_id": "b"
         }
 
