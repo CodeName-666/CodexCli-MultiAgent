@@ -26,7 +26,7 @@ Details:
 flowchart TD
   A[run_split] --> B[load_task_text]
   B --> C{needs_split?}
-  C -- no --> D[pipeline.run (single run)]
+  C -- no --> D[pipeline.run - single run]
   C -- yes --> E[build or load manifest]
   E --> F[create chunks]
   F --> G[write base chunks + manifest]
@@ -72,14 +72,14 @@ Details:
 ```mermaid
 flowchart TD
   A[_run_roles] --> B[select ready roles]
-  B --> C[_run_role (per role)]
+  B --> C[_run_role per role]
   C --> D[create_shard_plan]
   D --> E[spawn role instances]
   E --> F[_run_role_instance]
   F --> G[claim task + build prompt]
   G --> H[execute agent + retries]
   H --> I[finalize instance]
-  I --> J[validate shards (overlaps/allowed_paths)]
+  I --> J[validate shards: overlaps/allowed_paths]
   J --> K[combine outputs]
   K --> L{apply_mode == role?}
   L -- yes --> M[apply diffs + resnapshot]
