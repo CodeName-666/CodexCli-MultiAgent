@@ -5,6 +5,7 @@ from __future__ import annotations
 import abc
 import hashlib
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Tuple
@@ -13,6 +14,53 @@ from .constants import DEFAULT_MAX_FILES, DEFAULT_MAX_FILE_BYTES
 from .format_converter import FormatConversionError, build_default_converter
 from .utils import read_text_safe, select_relevant_files
 
+
+_JSON_FENCE_RE = re.compile(r"(^[ \t]*)```json\s*\n(.*?)\n\1```", re.DOTALL | re.MULTILINE)
+
+
+def _indent_block(text: str, prefix: str) -> str:
+    lines = (text or "").splitlines()
+    if not prefix:
+        return "\n".join(lines)
+    return "\n".join(f"{prefix}{line}" if line else prefix.rstrip() for line in lines)
+
+
+def _convert_json_fences(text: str, converter) -> str:
+    def _replace(match: re.Match) -> str:
+        prefix = match.group(1) or ""
+        body = match.group(2) or ""
+        try:
+            data = json.loads(body)
+        except json.JSONDecodeError:
+            return match.group(0)
+        try:
+            toon_text = converter.encode(data, "toon")
+        except (FormatConversionError, ValueError):
+            return match.group(0)
+        block = "\n".join(
+            [
+                f"{prefix}```toon",
+                _indent_block(toon_text, prefix),
+                f"{prefix}```",
+            ]
+        )
+        return block
+
+    return _JSON_FENCE_RE.sub(_replace, text or "")
+
+
+def _convert_full_json(text: str, converter) -> str | None:
+    stripped = (text or "").strip()
+    if not stripped.startswith(("{", "[")):
+        return None
+    try:
+        data = json.loads(stripped)
+    except json.JSONDecodeError:
+        return None
+    try:
+        return converter.encode(data, "toon")
+    except (FormatConversionError, ValueError):
+        return None
 
 @dataclass(frozen=True)
 class SnapshotResult:
@@ -124,6 +172,11 @@ class WorkspaceSnapshotter(BaseSnapshotter):
         conversion_strict = bool(formatting_cfg.get("conversion_strict", False))
         snapshot_note = str(formatting_cfg.get("snapshot_note") or "").strip()
         converter = build_default_converter(formatting_cfg) if formatting_enabled else None
+        text_json_to_toon = bool(formatting_cfg.get("text_json_to_toon", False))
+        text_extensions = formatting_cfg.get("text_extensions") or []
+        if not isinstance(text_extensions, list):
+            text_extensions = [text_extensions]
+        text_extensions = [str(item).lower() for item in text_extensions if item]
 
         lines: List[str] = []
         lines.append(str(snapshot_cfg["workspace_header"]).format(root=root))
@@ -163,6 +216,11 @@ class WorkspaceSnapshotter(BaseSnapshotter):
                     except (FormatConversionError, ValueError):
                         if conversion_strict:
                             raise
+            if converter and text_json_to_toon and (not was_truncated) and ext in text_extensions:
+                content = _convert_json_fences(content, converter)
+                full_toon = _convert_full_json(content, converter)
+                if full_toon:
+                    content = full_toon
             header = str(snapshot_cfg["file_section_header"]).format(rel=rel)
             lines.append(f"\n{header}\n")
             lines.append(content)

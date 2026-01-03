@@ -77,6 +77,11 @@ def _apply_formatting_rules(system_rules: str, formatting_cfg: Dict[str, object]
                 system_rules,
                 "- JSON-Datei-Inhalte im Snapshot sind in TOON konvertiert.",
             )
+    if bool(formatting_cfg.get("text_json_to_toon", False)):
+        system_rules = _append_rule(
+            system_rules,
+            "- Wenn du strukturierte JSON-Daten in Markdown/Text ausgeben wuerdest, nutze TOON in ```toon```-Bloecken.",
+        )
     return system_rules
 
 
