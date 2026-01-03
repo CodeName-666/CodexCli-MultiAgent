@@ -215,6 +215,11 @@ class FeedbackLoopConfig(MappingConfig):
 
 
 @dataclasses.dataclass(frozen=True)
+class FormattingConfig(MappingConfig):
+    pass
+
+
+@dataclasses.dataclass(frozen=True)
 class CliProvidersConfig(MappingConfig):
     pass
 
@@ -294,6 +299,7 @@ class AppConfig:
     diff_apply: DiffApplyConfig
     logging: LoggingConfig
     feedback_loop: FeedbackLoopConfig
+    formatting: FormattingConfig
 
 
 @dataclasses.dataclass(frozen=True)

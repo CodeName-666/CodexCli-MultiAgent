@@ -179,6 +179,17 @@
       "high"
     ]
   },
+  "formatting": {
+    "enabled": true,
+    "extension_map": {
+      ".json": "toon"
+    },
+    "task_json_to_toon": true,
+    "output_json_as_toon": true,
+    "snapshot_note": "FORMAT: TOON (converted from JSON)",
+    "conversion_strict": false,
+    "toon_options": {}
+  },
   "cli": {
     "args": {
       "config": {

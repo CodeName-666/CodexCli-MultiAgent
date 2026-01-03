@@ -27,12 +27,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 # Import common utilities
 from multi_agent.common_utils import load_json, write_json, deep_merge, slugify
 from multi_agent.constants import get_static_config_dir
-from creators.codex_client import call_codex, extract_json_from_markdown
+from multi_agent.format_converter import FormatConversionError, build_default_converter
+from creators.codex_client import call_codex, extract_payload_from_markdown
 
 # Import from multi_role_agent_creator
 from creators.multi_role_agent_creator import (
     load_config_with_defaults,
     build_description_optimization_prompt,
+    resolve_output_format,
 )
 
 from multi_agent.cli_adapter import CLIAdapter
@@ -296,86 +298,65 @@ def build_family_spec_prompt(
     extra_instructions: str,
     role_count_hint: int | None,
     lang: str,
+    output_format: str = "json",
+    formatting: Dict[str, object] | None = None,
 ) -> str:
     """
     Generate prompt for Codex to create family specification.
     """
+    formatting_cfg = formatting or {}
+    output_label = "TOON" if output_format == "toon" else "JSON"
+    template_obj = _family_spec_template(lang)
+    converter = build_default_converter(formatting_cfg) if output_format == "toon" else None
+    if output_format == "toon":
+        template_text = converter.encode(template_obj, "toon")
+        if lang == "de":
+            format_note = "TOON ist eine lossless JSON-Notation. Nutze TOON, nicht JSON."
+        else:
+            format_note = "TOON is a lossless JSON notation. Use TOON, not JSON."
+    else:
+        template_text = json.dumps(template_obj, indent=2, ensure_ascii=True)
+        format_note = ""
 
     if lang == "de":
-        base_instructions = """Du bist ein Experte für Multi-Agent-Systeme. Erstelle eine vollständige Spezifikation für eine Agent-Familie.
+        base_instructions = """Du bist ein Experte fuer Multi-Agent-Systeme. Erstelle eine vollstaendige Spezifikation fuer eine Agent-Familie.
 
 AUFGABE:
-Basierend auf der folgenden Beschreibung, generiere eine strukturierte Familie-Spezifikation im JSON-Format.
+Basierend auf der folgenden Beschreibung, generiere eine strukturierte Familie-Spezifikation im {output_label}-Format.
 
 BESCHREIBUNG:
 {description}
 
-AUSGABE-FORMAT (JSON):
-{{
-  "family_id": "<slug_name>",
-  "family_name": "<Human Readable Name>",
-  "system_rules": "<System-Regeln für alle Agenten>",
-  "roles": [
-    {{
-      "id": "<role_id>",
-      "name": "<Role Name>",
-      "role_label": "<Job Title>",
-      "description": "<2-4 Sätze: Was macht diese Rolle?>",
-      "depends_on": ["<other_role_id>"],
-      "apply_diff": true/false,
-      "instances": 1,
-      "expected_sections": ["# Title", "- Section 1:", "- Section 2:"],
-      "timeout_sec": <optional override>
-    }}
-  ],
-  "final_role_id": "<id_of_last_role>",
-  "workflow_description": "<2-3 Sätze: Wie arbeiten die Rollen zusammen?>"
-}}
+AUSGABE-FORMAT ({output_label}):
+__TEMPLATE__
+{format_note}
 
 REGELN:
 1. Rollen-Anzahl: {role_count_guidance}
-2. Rollen-Muster: Folge typischen Workflows (Architect → Implementer → Validator → Integrator)
+2. Rollen-Muster: Folge typischen Workflows (Architect -> Implementer -> Validator -> Integrator)
 3. Dependencies: Lineare oder Branch-Struktur (keine Zyklen!)
-4. Apply-Diff: Nur für Rollen, die Code/Dateien ändern (Implementer, Tester, etc.)
+4. Apply-Diff: Nur fuer Rollen, die Code/Dateien aendern (Implementer, Tester, etc.)
 5. Expected-Sections: Definiere klare Output-Struktur pro Rolle
 6. Final-Role: Muss ein Integrator/Summarizer sein, der alle vorherigen Outputs zusammenfasst
 7. Role-IDs: Lowercase mit Unterstrichen (z.B., "ml_data_analyst")
-8. Instances: Default 1, nur erhöhen wenn explizit gewünscht
-9. System-Rules: Definiere klare Verhaltensregeln für alle Agenten dieser Familie"""
+8. Instances: Default 1, nur erhoehen wenn explizit gewuenscht
+9. System-Rules: Definiere klare Verhaltensregeln fuer alle Agenten dieser Familie"""
     else:
         base_instructions = """You are an expert in multi-agent systems. Create a complete specification for an agent family.
 
 TASK:
-Based on the following description, generate a structured family specification in JSON format.
+Based on the following description, generate a structured family specification in {output_label} format.
 
 DESCRIPTION:
 {description}
 
-OUTPUT FORMAT (JSON):
-{{
-  "family_id": "<slug_name>",
-  "family_name": "<Human Readable Name>",
-  "system_rules": "<System rules for all agents>",
-  "roles": [
-    {{
-      "id": "<role_id>",
-      "name": "<Role Name>",
-      "role_label": "<Job Title>",
-      "description": "<2-4 sentences: What does this role do?>",
-      "depends_on": ["<other_role_id>"],
-      "apply_diff": true/false,
-      "instances": 1,
-      "expected_sections": ["# Title", "- Section 1:", "- Section 2:"],
-      "timeout_sec": <optional override>
-    }}
-  ],
-  "final_role_id": "<id_of_last_role>",
-  "workflow_description": "<2-3 sentences: How do roles work together?>"
-}}
+OUTPUT FORMAT ({output_label}):
+__TEMPLATE__
+{format_note}
 
 RULES:
 1. Role count: {role_count_guidance}
-2. Role patterns: Follow typical workflows (Architect → Implementer → Validator → Integrator)
+2. Role patterns: Follow typical workflows (Architect -> Implementer -> Validator -> Integrator)
 3. Dependencies: Linear or branching (no cycles!)
 4. Apply-Diff: Only for roles that modify code/files
 5. Expected-Sections: Define clear output structure per role
@@ -392,8 +373,10 @@ RULES:
 
     prompt_parts = [base_instructions.format(
         description=description,
-        role_count_guidance=role_count_guidance
-    )]
+        role_count_guidance=role_count_guidance,
+        output_label=output_label,
+        format_note=format_note,
+    ).replace("__TEMPLATE__", template_text)]
 
     # Template mode handling
     if template_config and template_mode in ["clone", "inspire"]:
@@ -404,17 +387,21 @@ RULES:
             template_text = "TEMPLATE ALS INSPIRATION:\nLass dich davon inspirieren, aber erstelle eine neue Struktur:\n" if lang == "de" else \
                           "TEMPLATE AS INSPIRATION:\nDraw inspiration but create new structure:\n"
 
-        template_text += json.dumps({
+        template_payload = {
             "roles": [
                 {
                     "id": role.get("id"),
                     "depends_on": role.get("depends_on", []),
-                    "apply_diff": role.get("apply_diff", False)
+                    "apply_diff": role.get("apply_diff", False),
                 }
                 for role in template_config.get("roles", [])
             ],
-            "final_role_id": template_config.get("final_role_id")
-        }, indent=2)
+            "final_role_id": template_config.get("final_role_id"),
+        }
+        if output_format == "toon":
+            template_text += converter.encode(template_payload, "toon")
+        else:
+            template_text += json.dumps(template_payload, indent=2)
 
         prompt_parts.append(template_text)
 
@@ -427,9 +414,9 @@ RULES:
 
     # Final output reminder
     if lang == "de":
-        prompt_parts.append("\nGIB NUR VALIDES JSON AUS. KEINE ERKLÄRUNGEN AUSSERHALB DES JSON.")
+        prompt_parts.append(f"\nGIB NUR VALIDES {output_label} AUS. KEINE ERKLAERUNGEN AUSSERHALB DES {output_label}.")
     else:
-        prompt_parts.append("\nOUTPUT ONLY VALID JSON. NO EXPLANATIONS OUTSIDE JSON.")
+        prompt_parts.append(f"\nOUTPUT ONLY VALID {output_label}. NO EXPLANATIONS OUTSIDE {output_label}.")
 
     return "\n\n".join(prompt_parts)
 
@@ -559,6 +546,37 @@ def validate_dependencies(roles: List[Dict]) -> None:
                 raise FamilyValidationError(f"Rolle {role['id']} hängt von unbekannter Rolle ab: {dep}")
 
 
+def _family_spec_template(lang: str) -> Dict[str, object]:
+    if lang == "de":
+        role_description = "<2-4 Saetze: Was macht diese Rolle?>"
+        workflow_description = "<2-3 Saetze: Wie arbeiten die Rollen zusammen?>"
+        system_rules = "<System-Regeln fuer alle Agenten>"
+    else:
+        role_description = "<2-4 sentences: What does this role do?>"
+        workflow_description = "<2-3 sentences: How do roles work together?>"
+        system_rules = "<System rules for all agents>"
+    return {
+        "family_id": "<slug_name>",
+        "family_name": "<Human Readable Name>",
+        "system_rules": system_rules,
+        "roles": [
+            {
+                "id": "<role_id>",
+                "name": "<Role Name>",
+                "role_label": "<Job Title>",
+                "description": role_description,
+                "depends_on": ["<other_role_id>"],
+                "apply_diff": "<true_or_false>",
+                "instances": 1,
+                "expected_sections": ["# Title", "- Section 1:", "- Section 2:"],
+                "timeout_sec": "<optional override>",
+            }
+        ],
+        "final_role_id": "<id_of_last_role>",
+        "workflow_description": workflow_description,
+    }
+
+
 class FamilyCreator:
     """
     Main class for family creation.
@@ -567,6 +585,10 @@ class FamilyCreator:
     def __init__(self, args: argparse.Namespace):
         self.args = args
         self.config_path = Path(args.output_dir).resolve()
+        defaults_path = get_static_config_dir() / "defaults.json"
+        defaults = load_json(defaults_path) if defaults_path.exists() else {}
+        self.formatting_cfg = dict(defaults.get("formatting") or {})
+        self.output_format = resolve_output_format({"formatting": self.formatting_cfg})
 
         # CLI Client Setup via CLIAdapter
         if args.codex_cmd:
@@ -618,6 +640,9 @@ class FamilyCreator:
         print("Schreibe Familie-Konfiguration...")
         self._write_family_files(family_spec)
 
+    def _extract_json(self, text: str) -> str:
+        return extract_payload_from_markdown(text, "json")
+
         print(f"\n✓ Familie erstellt: {family_spec['family_id']}")
         print(f"  Haupt-Config: {self.config_path}/{family_spec['family_id']}_main.json")
         print(f"  Rollen-Dir:   {self.config_path}/{family_spec['family_id']}_agents/")
@@ -651,18 +676,23 @@ class FamilyCreator:
             extra_instructions=self.args.extra_instructions or "",
             role_count_hint=self.args.role_count,
             lang=self.args.lang,
+            output_format=self.output_format,
+            formatting=self.formatting_cfg,
         )
 
         stdout = call_codex(prompt, self.codex_cmd, self.timeout_sec)
 
-        # Parse JSON
+        # Parse output
         try:
-            # Extract JSON from potential Markdown code blocks
-            json_text = extract_json_from_markdown(stdout)
-            family_spec = json.loads(json_text)
-        except json.JSONDecodeError as exc:
-            print(f"Fehler: Codex lieferte invalides JSON:\n{stdout}", file=sys.stderr)
-            raise RuntimeError(f"JSON Parse Error: {exc}") from exc
+            payload_text = extract_payload_from_markdown(stdout, self.output_format)
+            if self.output_format == "toon":
+                converter = build_default_converter(self.formatting_cfg)
+                family_spec = converter.decode(payload_text, "toon")
+            else:
+                family_spec = json.loads(payload_text)
+        except (FormatConversionError, json.JSONDecodeError, ValueError) as exc:
+            print(f"Fehler: Codex lieferte invalides {self.output_format.upper()}:\n{stdout}", file=sys.stderr)
+            raise RuntimeError(f"{self.output_format.upper()} Parse Error: {exc}") from exc
 
         # Apply overrides
         if self.args.family_id:

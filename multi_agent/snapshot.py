@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Dict, List, Tuple
 
 from .constants import DEFAULT_MAX_FILES, DEFAULT_MAX_FILE_BYTES
+from .format_converter import FormatConversionError, build_default_converter
 from .utils import read_text_safe, select_relevant_files
 
 
@@ -30,6 +31,7 @@ class BaseSnapshotter(abc.ABC):
         max_files: int,
         max_bytes_per_file: int,
         task: str | None = None,
+        formatting: Dict[str, object] | None = None,
     ) -> SnapshotResult:
         raise NotImplementedError
 
@@ -42,6 +44,7 @@ class WorkspaceSnapshotter(BaseSnapshotter):
         max_files: int = DEFAULT_MAX_FILES,
         max_bytes_per_file: int = DEFAULT_MAX_FILE_BYTES,
         task: str | None = None,
+        formatting: Dict[str, object] | None = None,
     ) -> SnapshotResult:
         """
         Snapshot des Workspaces:
@@ -98,6 +101,22 @@ class WorkspaceSnapshotter(BaseSnapshotter):
             per_file = int(max_total_bytes) // max(len(files), 1)
             effective_max_bytes = max(256, min(effective_max_bytes, per_file))
 
+        formatting_cfg = formatting or {}
+        formatting_enabled = bool(formatting_cfg.get("enabled", False))
+        extension_map = formatting_cfg.get("extension_map") or {}
+        if not isinstance(extension_map, dict):
+            extension_map = {}
+        normalized_map: Dict[str, object] = {}
+        for key, value in extension_map.items():
+            key_str = str(key).lower()
+            if key_str and not key_str.startswith("."):
+                key_str = f".{key_str}"
+            normalized_map[key_str] = value
+        extension_map = normalized_map
+        conversion_strict = bool(formatting_cfg.get("conversion_strict", False))
+        snapshot_note = str(formatting_cfg.get("snapshot_note") or "").strip()
+        converter = build_default_converter(formatting_cfg) if formatting_enabled else None
+
         lines: List[str] = []
         lines.append(str(snapshot_cfg["workspace_header"]).format(root=root))
         lines.append("")
@@ -117,9 +136,25 @@ class WorkspaceSnapshotter(BaseSnapshotter):
             if p.suffix.lower() in skip_exts:
                 continue
             rel = p.relative_to(root)
+            try:
+                size = p.stat().st_size
+            except OSError:
+                size = -1
             content = read_text_safe(p, limit_bytes=effective_max_bytes)
             if not content.strip():
                 continue
+            ext = p.suffix.lower()
+            was_truncated = size > 0 and effective_max_bytes > 0 and size > effective_max_bytes
+            if converter and ext in extension_map and not was_truncated:
+                target_format = str(extension_map.get(ext) or "").strip().lower()
+                if target_format:
+                    try:
+                        content = converter.convert_by_extension(content, ext, target_format)
+                        if snapshot_note:
+                            content = f"{snapshot_note}\n{content}"
+                    except (FormatConversionError, ValueError):
+                        if conversion_strict:
+                            raise
             header = str(snapshot_cfg["file_section_header"]).format(rel=rel)
             lines.append(f"\n{header}\n")
             lines.append(content)

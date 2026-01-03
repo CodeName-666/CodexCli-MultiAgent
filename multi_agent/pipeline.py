@@ -16,6 +16,7 @@ from .executor import AgentExecutor, CLIClient, StreamingContext
 from .coordination import CoordinationLog, TaskBoard
 from .diff_applier import BaseDiffApplier, UnifiedDiffApplier
 from .diff_utils import detect_file_overlaps, extract_touched_files_from_unified_diff, validate_touched_files_against_allowed_paths
+from .format_converter import FormatConversionError, build_default_converter
 from .models import AgentResult, AgentSpec, AppConfig, RoleConfig, ShardPlan
 from .progress import ProgressReporter
 from .progress_display import AgentProgressDisplay
@@ -107,7 +108,13 @@ class Pipeline:
                 print(cfg.messages["error_task_empty"], file=sys.stderr)
                 return 2
             try:
-                task_payload = self._prepare_task(raw_task, workdir, run_dir, cfg.task_limits)
+                task_payload = self._prepare_task(
+                    raw_task,
+                    workdir,
+                    run_dir,
+                    cfg.task_limits,
+                    formatting=cfg.formatting.to_dict(),
+                )
             except (FileNotFoundError, ValueError) as exc:
                 print(str(exc), file=sys.stderr)
                 return 2
@@ -255,6 +262,7 @@ class Pipeline:
             max_files=ctx.args.max_files,
             max_bytes_per_file=ctx.args.max_file_bytes,
             task=ctx.task_full,
+            formatting=ctx.cfg.formatting.to_dict(),
         )
         snapshot_text = snapshot_result.text
         write_text(ctx.run_dir / str(ctx.cfg.paths.snapshot_filename), snapshot_text)
@@ -459,6 +467,7 @@ class Pipeline:
                 max_files=ctx.args.max_files,
                 max_bytes_per_file=ctx.args.max_file_bytes,
                 task=ctx.task_full,
+                formatting=ctx.cfg.formatting.to_dict(),
             )
             snapshot_name = f"snapshot_after_{role_cfg.id}.txt"
             write_text(ctx.run_dir / snapshot_name, snapshot_result.text)
@@ -1119,6 +1128,7 @@ class Pipeline:
         workdir: Path,
         run_dir: Path,
         task_limits: Dict[str, object],
+        formatting: Dict[str, object] | None = None,
     ) -> Dict[str, object]:
         task = (raw_task or "").strip()
         task_source = ""
@@ -1139,24 +1149,66 @@ class Pipeline:
         if not task_full.strip():
             raise ValueError("Fehler: --task ist leer.")
 
+        formatting_cfg = formatting or {}
+        formatting_enabled = bool(formatting_cfg.get("enabled", False))
+        task_json_to_toon = bool(formatting_cfg.get("task_json_to_toon", False))
+        extension_map = formatting_cfg.get("extension_map") or {}
+        if not isinstance(extension_map, dict):
+            extension_map = {}
+        normalized_map: Dict[str, object] = {}
+        for key, value in extension_map.items():
+            key_str = str(key).lower()
+            if key_str and not key_str.startswith("."):
+                key_str = f".{key_str}"
+            normalized_map[key_str] = value
+        extension_map = normalized_map
+        conversion_strict = bool(formatting_cfg.get("conversion_strict", False))
+
+        task_full_for_prompt = task_full
+        task_format = "raw"
+        if formatting_enabled and task_json_to_toon:
+            try:
+                ext = Path(task_source).suffix.lower() if task_source else ""
+            except (TypeError, ValueError):
+                ext = ""
+            should_convert = False
+            if ext and ext in extension_map and str(extension_map.get(ext) or "").lower() == "toon":
+                should_convert = True
+            elif not ext and task_full.lstrip().startswith(("{", "[")):
+                should_convert = True
+            if should_convert and task_full.strip():
+                converter = build_default_converter(formatting_cfg)
+                try:
+                    task_full_for_prompt = converter.convert(task_full, "json", "toon")
+                    task_format = "toon"
+                except (FormatConversionError, json.JSONDecodeError, ValueError):
+                    if conversion_strict:
+                        raise
+
         inline_max = int(task_limits.get("inline_max_chars", 2400) or 2400)
         summary_max = int(task_limits.get("summary_max_chars", 1600) or 1600)
         full_name = str(task_limits.get("full_text_filename") or "task_full.md")
+        if task_format == "toon":
+            full_path = Path(full_name)
+            if full_path.suffix:
+                full_name = full_path.with_suffix(".toon").name
+            else:
+                full_name = full_name + ".toon"
 
         truncated = False
-        task_display = task_full
-        if inline_max > 0 and len(task_full) > inline_max:
+        task_display = task_full_for_prompt
+        if inline_max > 0 and len(task_full_for_prompt) > inline_max:
             truncated = True
             if summary_max <= 0:
                 summary_max = inline_max
             summary_max = max(256, min(summary_max, inline_max))
-            task_display = summarize_text(task_full, max_chars=summary_max)
+            task_display = summarize_text(task_full_for_prompt, max_chars=summary_max)
 
         needs_full_file = bool(task_source) or truncated
         task_file_ref = ""
         if needs_full_file:
             full_path = run_dir / full_name
-            write_text(full_path, task_full)
+            write_text(full_path, task_full_for_prompt)
             try:
                 task_file_ref = str(full_path.relative_to(workdir))
             except ValueError:

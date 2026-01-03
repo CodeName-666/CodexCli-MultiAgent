@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Iterable, List, Tuple
 
+from .format_converter import FormatConversionError, build_default_converter, extract_payload_from_markdown
 from .utils import estimate_tokens, now_stamp, truncate_text, write_text
 
 HEADING_RE = re.compile(r"^(#{1,6})\s+(.+)$")
@@ -122,12 +123,14 @@ def plan_chunks_with_llm(
     codex_cmd: List[str],
     timeout_sec: int,
     max_headings: int,
+    output_format: str = "json",
+    formatting: Dict[str, object] | None = None,
 ) -> List[Dict[str, object]]:
     if not headings or len(headings) < 2:
         return []
     if max_headings > 0 and len(headings) > max_headings:
         return []
-    prompt = _build_llm_prompt(headings)
+    prompt = _build_llm_prompt(headings, output_format=output_format)
     try:
         proc = subprocess.run(
             codex_cmd,
@@ -141,7 +144,8 @@ def plan_chunks_with_llm(
     if proc.returncode != 0:
         return []
     raw = (proc.stdout or "").strip()
-    data = _extract_json_payload(raw)
+    converter = build_default_converter(formatting) if output_format == "toon" else None
+    data = _extract_plan_payload(raw, output_format, converter)
     if not isinstance(data, dict):
         return []
     chunks = data.get("chunks")
@@ -404,7 +408,28 @@ def _slugify(text: str) -> str:
     return text.strip("_") or "task"
 
 
-def _build_llm_prompt(headings: List[HeadingInfo]) -> str:
+def _build_llm_prompt(headings: List[HeadingInfo], output_format: str = "json") -> str:
+    if output_format == "toon":
+        lines = [
+            "You are a planner. Group the numbered headings into chunks by feature/module.",
+            "Return TOON only in this shape:",
+            "chunks[2]{start,end,title}:",
+            "  1,2,Auth",
+            "  3,4,DB",
+            "",
+            "Rules:",
+            "- Cover all headings 1..N exactly once in order.",
+            "- Chunks must be contiguous (next.start = previous.end + 1).",
+            "- Keep the number of chunks minimal but reasonable.",
+            "- Use short ASCII titles.",
+            "",
+            "Headings:",
+        ]
+        for heading in headings:
+            lines.append(f"{heading.index}) [L{heading.level}] {heading.title}")
+        lines.append("")
+        return "\n".join(lines)
+
     lines = [
         "You are a planner. Group the numbered headings into chunks by feature/module.",
         "Return JSON only in this shape:",
@@ -424,9 +449,22 @@ def _build_llm_prompt(headings: List[HeadingInfo]) -> str:
     return "\n".join(lines)
 
 
-def _extract_json_payload(raw: str) -> object:
+def _extract_plan_payload(
+    raw: str,
+    output_format: str,
+    converter,
+) -> object:
     if not raw:
         return None
+    if output_format == "toon":
+        payload = extract_payload_from_markdown(raw, "toon")
+        if not payload:
+            return None
+        try:
+            return converter.decode(payload, "toon") if converter else None
+        except (FormatConversionError, ValueError):
+            return None
+
     start = raw.find("{")
     end = raw.rfind("}")
     if start == -1 or end == -1 or end <= start:

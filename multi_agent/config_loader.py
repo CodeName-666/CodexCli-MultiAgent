@@ -15,6 +15,7 @@ from .models import (
     DiffMessageCatalog,
     DiffSafetyConfig,
     FeedbackLoopConfig,
+    FormattingConfig,
     LoggingConfig,
     MessageCatalog,
     OutputsConfig,
@@ -45,6 +46,32 @@ def _normalize_prompt_template(value: object, role_path: Path) -> str:
     if isinstance(value, str):
         return value
     raise ValueError(f"Role file prompt_template must be string or list of strings: {role_path}")
+
+
+def _append_rule(system_rules: str, rule: str) -> str:
+    if rule in system_rules:
+        return system_rules
+    if not system_rules.endswith("\n"):
+        system_rules += "\n"
+    return system_rules + rule + "\n"
+
+
+def _apply_formatting_rules(system_rules: str, formatting_cfg: Dict[str, object]) -> str:
+    if not bool(formatting_cfg.get("enabled", False)):
+        return system_rules
+    if bool(formatting_cfg.get("output_json_as_toon", False)):
+        system_rules = _append_rule(
+            system_rules,
+            "- Wenn du JSON ausgeben wuerdest, gib stattdessen TOON aus.",
+        )
+    extension_map = formatting_cfg.get("extension_map") or {}
+    if isinstance(extension_map, dict):
+        if any(str(target).lower() == "toon" for target in extension_map.values()):
+            system_rules = _append_rule(
+                system_rules,
+                "- JSON-Datei-Inhalte im Snapshot sind in TOON konvertiert.",
+            )
+    return system_rules
 
 
 def load_role_config(
@@ -149,6 +176,7 @@ def load_app_config(config_path: Path) -> AppConfig:
     task_limits = data.get("task_limits") or {}
     task_split = data.get("task_split") or {}
     streaming = data.get("streaming") or {}
+    formatting = data.get("formatting") or {}
 
     paths_cfg = PathsConfig.from_dict(data.get("paths") or {})
     outputs_cfg = OutputsConfig.from_dict(outputs_raw)
@@ -166,6 +194,7 @@ def load_app_config(config_path: Path) -> AppConfig:
     diff_apply_cfg = DiffApplyConfig(dict(data.get("diff_apply") or {}))
     logging_cfg = LoggingConfig(dict(data.get("logging") or {}))
     feedback_cfg = FeedbackLoopConfig(dict(data.get("feedback_loop") or {}))
+    formatting_cfg = FormattingConfig(dict(formatting or {}))
     coordination_cfg = CoordinationConfig(
         task_board=str(coordination_raw.get("task_board") or ".multi_agent_runs/<run_id>/task_board.json"),
         channel=str(coordination_raw.get("channel") or ".multi_agent_runs/<run_id>/coordination.log"),
@@ -174,8 +203,10 @@ def load_app_config(config_path: Path) -> AppConfig:
         lock_timeout_sec=int(coordination_raw.get("lock_timeout_sec", 10) or 10),
     )
 
+    system_rules = _apply_formatting_rules(str(data["system_rules"]), formatting_cfg.to_dict())
+
     return AppConfig(
-        system_rules=str(data["system_rules"]),
+        system_rules=system_rules,
         roles=roles,
         final_role_id=final_role_id,
         summary_max_chars=int(data.get("summary_max_chars", 1400)),
@@ -198,4 +229,5 @@ def load_app_config(config_path: Path) -> AppConfig:
         diff_apply=diff_apply_cfg,
         logging=logging_cfg,
         feedback_loop=feedback_cfg,
+        formatting=formatting_cfg,
     )
