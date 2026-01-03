@@ -299,6 +299,9 @@ class RoleConfig:
     max_diff_lines_per_shard: int | None = 500
     reshard_on_timeout_124: bool = True
     max_reshard_depth: int = 2
+    # LLM Sharding configuration
+    shard_llm: Dict[str, str] | None = None  # {"provider": "claude", "model": "haiku"}
+    shard_llm_options: Dict[str, object] | None = None  # {"timeout_sec": 60, "max_retries": 2, ...}
 
 
 @dataclasses.dataclass(frozen=True)

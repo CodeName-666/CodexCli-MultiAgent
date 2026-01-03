@@ -1,0 +1,30 @@
+{
+  "role_defaults": {
+    "instances": 1,
+    "timeout_sec": 1800,
+    "shard_mode": "none",
+    "overlap_policy": "warn",
+    "enforce_allowed_paths": false
+  },
+  "roles": [
+    {
+      "id": "implementer",
+      "file": "../agent_families/developer_agents/implementer.json",
+      "instances": 4,
+      "shard_mode": "llm",
+      "cli_provider": "claude",
+      "model": "opus",
+      "shard_llm": {
+        "provider": "claude",
+        "model": "haiku"
+      },
+      "shard_llm_options": {
+        "timeout_sec": 60,
+        "max_retries": 2,
+        "fallback_mode": "single"
+      },
+      "apply_diff": true,
+      "depends_on": []
+    }
+  ]
+}

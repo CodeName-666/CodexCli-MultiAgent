@@ -124,6 +124,12 @@ def load_role_config(
     cli_parameters_raw = role_entry.get("cli_parameters", defaults.get("cli_parameters"))
     cli_parameters = dict(cli_parameters_raw) if cli_parameters_raw else None
 
+    # LLM Sharding configuration
+    shard_llm_raw = role_entry.get("shard_llm", defaults.get("shard_llm"))
+    shard_llm = dict(shard_llm_raw) if shard_llm_raw and isinstance(shard_llm_raw, dict) else None
+    shard_llm_options_raw = role_entry.get("shard_llm_options", defaults.get("shard_llm_options"))
+    shard_llm_options = dict(shard_llm_options_raw) if shard_llm_options_raw and isinstance(shard_llm_options_raw, dict) else None
+
     return RoleConfig(
         id=role_id,
         name=str(data.get("name") or role_id),
@@ -151,6 +157,9 @@ def load_role_config(
         max_diff_lines_per_shard=int(max_diff_lines_per_shard) if max_diff_lines_per_shard is not None else None,
         reshard_on_timeout_124=bool(reshard_on_timeout_124),
         max_reshard_depth=int(max_reshard_depth),
+        # LLM Sharding fields
+        shard_llm=shard_llm,
+        shard_llm_options=shard_llm_options,
     )
 
 
