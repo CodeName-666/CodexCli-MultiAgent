@@ -62,7 +62,7 @@ def summarize_text(text: str, max_chars: int = 1200) -> str:
     if len(text) <= max_chars:
         return text
     head = text[: max_chars // 2].rstrip()
-    tail = text[- max_chars // 2 :].lstrip()
+    tail = text[- max_chars // 2:].lstrip()
     return head + "\n...\n" + tail
 
 
