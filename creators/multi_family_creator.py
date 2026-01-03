@@ -4,7 +4,7 @@ multi_family_creator.py - Create complete agent families from natural language d
 
 This tool generates:
 - Main configuration file (<family>_main.json)
-- All role definition files (<family>_roles/*.json)
+- All role definition files (<family>_agents/*.json)
 
 Using Codex CLI for intelligent generation of role specs and prompt templates.
 """
@@ -24,17 +24,154 @@ from typing import Dict, List
 # Add parent directory to path so we can import multi_agent modules
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-# Import utilities from existing multi_role_agent_creator
+# Import common utilities
+from multi_agent.common_utils import load_json, write_json, deep_merge, slugify
+from multi_agent.constants import get_static_config_dir
+from creators.codex_client import call_codex, extract_json_from_markdown
+
+# Import from multi_role_agent_creator
 from creators.multi_role_agent_creator import (
-    load_json,
     load_config_with_defaults,
-    deep_merge,
-    write_json,
-    slugify,
     build_description_optimization_prompt,
 )
 
-from multi_agent.utils import get_codex_cmd, parse_cmd
+from multi_agent.cli_adapter import CLIAdapter
+from multi_agent.utils import parse_cmd
+
+
+# ============================================================================
+# CLI Provider Configuration Utilities
+# ============================================================================
+
+# Provider recommendations (not automatically applied)
+PROVIDER_RECOMMENDATIONS = {
+    'architect': {
+        'cli_provider': 'claude',
+        'model': 'sonnet',
+        'cli_parameters': {
+            'max_turns': 3,
+            'allowed_tools': 'Read,Glob,Grep'
+        }
+    },
+    'designer': {
+        'cli_provider': 'codex',
+    },
+    'implementer': {
+        'cli_provider': 'codex',
+    },
+    'tester': {
+        'cli_provider': 'gemini',
+        'model': 'gemini-2.5-flash',
+        'cli_parameters': {
+            'temperature': 0.5
+        }
+    },
+    'reviewer': {
+        'cli_provider': 'claude',
+        'model': 'opus',
+        'cli_parameters': {
+            'max_turns': 2,
+            'append_system_prompt': 'Fokus: Security, Performance, Maintainability'
+        }
+    },
+    'integrator': {
+        'cli_provider': 'claude',
+        'model': 'haiku',
+        'cli_parameters': {
+            'max_turns': 1
+        }
+    }
+}
+
+
+def detect_role_type(role_id: str) -> str:
+    """Detect role type from role ID (for recommendations only)."""
+    role_id_lower = role_id.lower()
+
+    if 'architect' in role_id_lower:
+        return 'architect'
+    elif 'designer' in role_id_lower or 'implementer' in role_id_lower:
+        return 'implementer'
+    elif 'tester' in role_id_lower or 'test' in role_id_lower:
+        return 'tester'
+    elif 'reviewer' in role_id_lower or 'review' in role_id_lower:
+        return 'reviewer'
+    elif 'integrator' in role_id_lower or 'integration' in role_id_lower:
+        return 'integrator'
+    else:
+        return 'unknown'
+
+
+def get_recommendation_for_role(role_id: str) -> Dict | None:
+    """Get recommended CLI configuration for a role (optional)."""
+    role_type = detect_role_type(role_id)
+    return PROVIDER_RECOMMENDATIONS.get(role_type)
+
+
+def configure_provider_manually() -> Dict:
+    """Manually configure CLI provider (interactive)."""
+
+    # Select provider
+    print("\nAvailable Providers:")
+    print("  [1] codex (default)")
+    print("  [2] claude")
+    print("  [3] gemini")
+
+    provider_choice = input("Select provider (1-3): ").strip()
+    provider_map = {'1': 'codex', '2': 'claude', '3': 'gemini'}
+    provider = provider_map.get(provider_choice, 'codex')
+
+    config = {'cli_provider': provider}
+
+    # Select model (if Claude or Gemini)
+    model = None
+    if provider == 'claude':
+        print("\nClaude Models:")
+        print("  [1] sonnet (balanced)")
+        print("  [2] opus (highest quality)")
+        print("  [3] haiku (fast & cheap)")
+        model_choice = input("Select model (1-3): ").strip()
+        model_map = {'1': 'sonnet', '2': 'opus', '3': 'haiku'}
+        model = model_map.get(model_choice, 'sonnet')
+        config['model'] = model
+
+    elif provider == 'gemini':
+        print("\nGemini Models:")
+        print("  [1] gemini-2.5-flash (fast & cheap)")
+        print("  [2] gemini-2.5-pro (balanced)")
+        model_choice = input("Select model (1-2): ").strip()
+        model_map = {'1': 'gemini-2.5-flash', '2': 'gemini-2.5-pro'}
+        model = model_map.get(model_choice, 'gemini-2.5-flash')
+        config['model'] = model
+
+    # Parameters
+    add_params = input("\nAdd custom parameters? (y/N): ").strip().lower()
+    if add_params == 'y':
+        parameters = {}
+        print("Enter parameters (key=value, empty to finish):")
+        while True:
+            param = input("  > ").strip()
+            if not param:
+                break
+            if '=' in param:
+                key, value = param.split('=', 1)
+                # Try to parse as number
+                try:
+                    value = int(value)
+                except ValueError:
+                    try:
+                        value = float(value)
+                    except ValueError:
+                        pass  # Keep as string
+                parameters[key.strip()] = value
+
+        if parameters:
+            config['cli_parameters'] = parameters
+
+    return config
+
+
+# ============================================================================
 
 
 class FamilyValidationError(Exception):
@@ -119,7 +256,7 @@ def parse_args(argv: List[str] | None = None) -> argparse.Namespace:
     p.add_argument(
         "--output-dir",
         default="config",
-        help="Output directory for family config (default: config/)"
+        help="Output directory for family config (default: agent_families/)"
     )
     p.add_argument(
         "--dry-run",
@@ -384,6 +521,21 @@ Text may contain placeholders in curly braces (e.g., {{task}})."""
     return prompt
 
 
+def _has_cycle(node: str, graph: Dict[str, List[str]], visited: set[str], rec_stack: set[str]) -> bool:
+    visited.add(node)
+    rec_stack.add(node)
+
+    for neighbor in graph.get(node, []):
+        if neighbor not in visited:
+            if _has_cycle(neighbor, graph, visited, rec_stack):
+                return True
+        elif neighbor in rec_stack:
+            return True
+
+    rec_stack.remove(node)
+    return False
+
+
 def validate_dependencies(roles: List[Dict]) -> None:
     """
     Validate dependency graph (no cycles, all deps exist).
@@ -393,27 +545,11 @@ def validate_dependencies(roles: List[Dict]) -> None:
     # Build adjacency list
     graph = {role["id"]: role.get("depends_on", []) for role in roles}
 
-    # DFS for cycle detection
-    visited = set()
-    rec_stack = set()
-
-    def has_cycle(node):
-        visited.add(node)
-        rec_stack.add(node)
-
-        for neighbor in graph.get(node, []):
-            if neighbor not in visited:
-                if has_cycle(neighbor):
-                    return True
-            elif neighbor in rec_stack:
-                return True
-
-        rec_stack.remove(node)
-        return False
-
+    visited: set[str] = set()
+    rec_stack: set[str] = set()
     for role_id in graph:
         if role_id not in visited:
-            if has_cycle(role_id):
+            if _has_cycle(role_id, graph, visited, rec_stack):
                 raise FamilyValidationError(f"Dependency-Zyklus erkannt in Rolle: {role_id}")
 
     # Check if all dependencies exist
@@ -432,11 +568,14 @@ class FamilyCreator:
         self.args = args
         self.config_path = Path(args.output_dir).resolve()
 
-        # Codex Client Setup
+        # CLI Client Setup via CLIAdapter
         if args.codex_cmd:
             self.codex_cmd = parse_cmd(args.codex_cmd)
         else:
-            self.codex_cmd = get_codex_cmd("CODEX_CMD", "codex exec -")
+            cli_adapter = CLIAdapter(get_static_config_dir() / "cli_config.json")
+            self.codex_cmd, _, _ = cli_adapter.build_command_for_role(
+                provider_id=None, prompt=None, model=None, timeout_sec=None
+            )
 
         self.timeout_sec = args.codex_timeout_sec
 
@@ -472,13 +611,16 @@ class FamilyCreator:
         print("Generiere Prompt-Templates für Rollen...")
         family_spec = self._generate_prompt_templates(family_spec)
 
+        # PHASE 6.5: Configure CLI providers
+        family_spec = self._configure_cli_providers(family_spec)
+
         # PHASE 7: Write files
         print("Schreibe Familie-Konfiguration...")
         self._write_family_files(family_spec)
 
         print(f"\n✓ Familie erstellt: {family_spec['family_id']}")
         print(f"  Haupt-Config: {self.config_path}/{family_spec['family_id']}_main.json")
-        print(f"  Rollen-Dir:   {self.config_path}/{family_spec['family_id']}_roles/")
+        print(f"  Rollen-Dir:   {self.config_path}/{family_spec['family_id']}_agents/")
 
     def _load_template(self, template_ref: str) -> Dict:
         """
@@ -511,12 +653,12 @@ class FamilyCreator:
             lang=self.args.lang,
         )
 
-        stdout = self._call_codex(prompt)
+        stdout = call_codex(prompt, self.codex_cmd, self.timeout_sec)
 
         # Parse JSON
         try:
             # Extract JSON from potential Markdown code blocks
-            json_text = self._extract_json(stdout)
+            json_text = extract_json_from_markdown(stdout)
             family_spec = json.loads(json_text)
         except json.JSONDecodeError as exc:
             print(f"Fehler: Codex lieferte invalides JSON:\n{stdout}", file=sys.stderr)
@@ -542,46 +684,6 @@ class FamilyCreator:
             family_spec = self._clone_from_template(template_config, family_spec)
 
         return family_spec
-
-    def _call_codex(self, prompt: str) -> str:
-        """
-        Call Codex CLI and return stdout.
-        """
-        try:
-            proc = subprocess.run(
-                self.codex_cmd,
-                input=prompt,
-                text=True,
-                capture_output=True,
-                timeout=self.timeout_sec,
-            )
-        except subprocess.TimeoutExpired as exc:
-            raise RuntimeError(f"Codex CLI timeout nach {self.timeout_sec}s") from exc
-        except FileNotFoundError as exc:
-            raise RuntimeError(f"Codex CLI nicht gefunden: {exc}") from exc
-
-        if proc.returncode != 0:
-            stderr = (proc.stderr or "").strip()
-            raise RuntimeError(f"Codex CLI failed (rc={proc.returncode}): {stderr}")
-
-        return (proc.stdout or "").strip()
-
-    def _extract_json(self, text: str) -> str:
-        """
-        Extract JSON from Markdown code blocks if necessary.
-        """
-        # Try to find JSON code block
-        match = re.search(r"```json\s*\n(.*?)\n```", text, re.DOTALL)
-        if match:
-            return match.group(1)
-
-        # Try generic code block
-        match = re.search(r"```\s*\n(\{.*?\})\n```", text, re.DOTALL)
-        if match:
-            return match.group(1)
-
-        # Otherwise: entire text
-        return text.strip()
 
     def _validate_family_spec(self, spec: Dict) -> None:
         """
@@ -698,7 +800,7 @@ class FamilyCreator:
                 extra_instructions=""
             )
 
-            optimized = self._call_codex(prompt)
+            optimized = call_codex(prompt, self.codex_cmd, self.timeout_sec)
             role["description"] = optimized.strip()
 
         return spec
@@ -716,8 +818,99 @@ class FamilyCreator:
                 lang=self.args.lang,
             )
 
-            template = self._call_codex(prompt)
+            template = call_codex(prompt, self.codex_cmd, self.timeout_sec)
             role["prompt_template"] = template.strip()
+
+        return spec
+
+    def _configure_cli_providers(self, spec: Dict) -> Dict:
+        """
+        Optionally configure CLI providers for all roles.
+
+        Asks user if they want to configure CLI providers.
+        - If yes: Interactive configuration for each role
+        - If no: Set all roles to 'codex' (default)
+        """
+        print("\n" + "=" * 60)
+        print("CLI Provider Configuration")
+        print("=" * 60)
+        print("\nWould you like to configure CLI providers for the roles?")
+        print("  - codex (default): OpenAI Codex CLI")
+        print("  - claude: Anthropic Claude Code CLI")
+        print("  - gemini: Google Gemini CLI")
+        print("\nIf you skip this, all roles will use 'codex' as default.")
+
+        configure = input("\nConfigure CLI providers? (y/N): ").strip().lower()
+
+        if configure != 'y':
+            # Set all to codex (default)
+            print("[INFO] Skipping CLI provider configuration. All roles will use default (codex).")
+            for role in spec["roles"]:
+                role['cli_provider'] = 'codex'
+            return spec
+
+        # Interactive configuration for each role
+        print(f"\n{len(spec['roles'])} roles to configure.\n")
+
+        for role in spec["roles"]:
+            role_id = role['id']
+
+            # Show role info
+            print(f"\n{'=' * 60}")
+            print(f"Role: {role_id}")
+            print(f"Description: {role.get('description', 'N/A')[:80]}...")
+            print(f"{'=' * 60}")
+
+            # Show recommendation
+            recommendation = get_recommendation_for_role(role_id)
+            if recommendation:
+                rec_provider = recommendation.get('cli_provider', 'codex')
+                rec_model = recommendation.get('model', 'default')
+                rec_params = recommendation.get('cli_parameters', {})
+                rec_str = f"{rec_provider}"
+                if rec_model != 'default':
+                    rec_str += f"/{rec_model}"
+                if rec_params:
+                    param_strs = [f"{k}={v}" for k, v in rec_params.items()]
+                    rec_str += f" ({', '.join(param_strs)})"
+                print(f"Recommendation: {rec_str}")
+            else:
+                print(f"Recommendation: codex (default)")
+                recommendation = {'cli_provider': 'codex'}
+
+            # Options
+            print("\nOptions:")
+            print("  [1] Use codex (default)")
+            print("  [2] Configure manually")
+            if recommendation:
+                print("  [3] Use recommendation")
+
+            choice = input("\nSelect option (1-3): ").strip()
+
+            if choice == '1':
+                # Use codex
+                role['cli_provider'] = 'codex'
+                print("[OK] Using codex")
+
+            elif choice == '2':
+                # Configure manually
+                config = configure_provider_manually()
+                role.update(config)
+                print(f"[OK] Configured: {config}")
+
+            elif choice == '3' and recommendation:
+                # Use recommendation
+                role.update(recommendation)
+                print("[OK] Using recommendation")
+
+            else:
+                # Default to codex
+                role['cli_provider'] = 'codex'
+                print("[WARNING] Invalid choice, using default (codex)")
+
+        print(f"\n{'=' * 60}")
+        print("[OK] CLI provider configuration complete")
+        print(f"{'=' * 60}")
 
         return spec
 
@@ -757,7 +950,7 @@ class FamilyCreator:
             # Create entry for main.json
             entry = {
                 "id": role_id,
-                "file": f"{family_id}_roles/{role_id}.json",
+                "file": f"{family_id}_agents/{role_id}.json",
                 "instances": role.get("instances", 1),
                 "depends_on": role.get("depends_on", [])
             }
@@ -771,6 +964,16 @@ class FamilyCreator:
             if role.get("timeout_sec"):
                 entry["timeout_sec"] = role["timeout_sec"]
 
+            # Add CLI provider configuration
+            if role.get("cli_provider"):
+                entry["cli_provider"] = role["cli_provider"]
+
+            if role.get("model"):
+                entry["model"] = role["model"]
+
+            if role.get("cli_parameters"):
+                entry["cli_parameters"] = role["cli_parameters"]
+
             role_entries.append(entry)
 
         # Write main.json
@@ -781,66 +984,31 @@ class FamilyCreator:
         """
         Build family-specific main configuration.
 
-        With defaults.json available, we only write family-specific values.
+        Requires defaults.json in static_config/ directory.
+        Only family-specific values are written to the config file.
         """
-        defaults_path = self.config_path / "defaults.json"
+        defaults_path = self.config_path.parent / "static_config" / "defaults.json"
 
-        # Check if defaults.json exists
-        if defaults_path.exists():
-            # NEW BEHAVIOR: Only write family-specific values
-            family_id = spec["family_id"]
-            main_config = {
-                "final_role_id": spec["final_role_id"],
-                "roles": role_entries,
-                "cli": {
-                    "description": f"Multi-Agent Orchestrator für {spec.get('family_name', family_id)}."
-                },
-                "diff_safety": {
-                    "allowlist": [
-                        f"config/{family_id}_main.json",
-                        f"config/{family_id}_roles/*"
-                    ]
-                }
-            }
-        else:
-            # OLD BEHAVIOR: Full config for backwards compatibility
-            # Load developer_main.json as base for defaults
-            default_config_path = self.config_path / "developer_main.json"
-            if default_config_path.exists():
-                base_config = load_config_with_defaults(default_config_path)
-            else:
-                base_config = {}
+        if not defaults_path.exists():
+            raise FileNotFoundError(
+                f"defaults.json not found at {defaults_path}. "
+                "Please ensure static_config/defaults.json exists."
+            )
 
-            main_config = {
-                "system_rules": spec.get("system_rules", base_config.get("system_rules", "")),
-                "final_role_id": spec["final_role_id"],
-                "summary_max_chars": base_config.get("summary_max_chars", 1400),
-                "final_summary_max_chars": base_config.get("final_summary_max_chars", 2400),
-                "codex": base_config.get("codex", {
-                    "env_var": "CODEX_CMD",
-                    "default_cmd": "codex exec -"
-                }),
-                "role_defaults": base_config.get("role_defaults", {}),
-                "prompt_limits": base_config.get("prompt_limits", {}),
-                "task_limits": base_config.get("task_limits", {}),
-                "task_split": base_config.get("task_split", {}),
-                "paths": base_config.get("paths", {}),
-                "coordination": base_config.get("coordination", {}),
-                "outputs": base_config.get("outputs", {}),
-                "roles": role_entries,
-                "snapshot": base_config.get("snapshot", {}),
-                "agent_output": base_config.get("agent_output", {}),
-                "messages": base_config.get("messages", {}),
-                "diff_messages": base_config.get("diff_messages", {}),
-                "diff_safety": base_config.get("diff_safety", {}),
-                "diff_apply": base_config.get("diff_apply", {}),
-                "logging": base_config.get("logging", {}),
-                "feedback_loop": base_config.get("feedback_loop", {}),
-                "cli": {
-                    "description": f"Multi-Agent Orchestrator für {spec.get('family_name', spec['family_id'])}.",
-                    "args": base_config.get("cli", {}).get("args", {})
-                }
+        family_id = spec["family_id"]
+        main_config = {
+            "final_role_id": spec["final_role_id"],
+            "roles": role_entries,
+            "cli": {
+                "description": f"Multi-Agent Orchestrator für {spec.get('family_name', family_id)}."
+            },
+            "diff_safety": {
+                "allowlist": [
+                    f"agent_families/{family_id}_main.json",
+                    f"agent_families/{family_id}_agents/*"
+                ]
             }
+        }
 
         return main_config
 

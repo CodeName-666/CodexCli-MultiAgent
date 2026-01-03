@@ -27,16 +27,6 @@ def read_text_safe(path: Path, limit_bytes: int) -> str:
     return data.decode("utf-8", errors="replace")
 
 
-def get_codex_cmd(env_var: str, default_cmd: str) -> List[str]:
-    """
-    Erlaubt Overrides via ENV:
-      CODEX_CMD="codex --model xyz"
-    """
-    raw = os.environ.get(env_var, default_cmd)
-    # On Windows, use non-POSIX splitting to keep backslashes/paths intact.
-    return shlex.split(raw, posix=(os.name != "nt"))
-
-
 def parse_cmd(raw_cmd: str) -> List[str]:
     return shlex.split(raw_cmd, posix=(os.name != "nt"))
 

@@ -1,0 +1,229 @@
+{
+  "cli_providers": {
+    "codex": {
+      "name": "Codex CLI",
+      "description": "OpenAI Codex CLI Interface",
+      "command": "codex",
+      "execution_mode": "stdin",
+      "env_var": "CODEX_CMD",
+      "default_cmd": ["codex", "exec", "-"],
+      "parameters": {
+        "model": {
+          "flag": "--model",
+          "type": "string",
+          "description": "Model to use (e.g., gpt-4, gpt-3.5-turbo)",
+          "default": null
+        },
+        "timeout": {
+          "flag": "--timeout",
+          "type": "int",
+          "description": "Request timeout in seconds",
+          "default": null
+        },
+        "temperature": {
+          "flag": "--temperature",
+          "type": "float",
+          "description": "Sampling temperature (0.0-2.0)",
+          "default": null
+        },
+        "max_tokens": {
+          "flag": "--max-tokens",
+          "type": "int",
+          "description": "Maximum tokens in response",
+          "default": null
+        }
+      },
+      "input_mode": "stdin",
+      "output_mode": "stdout",
+      "supports_json_output": false,
+      "error_patterns": {
+        "timeout": ["timeout", "timed out"],
+        "rate_limit": ["rate limit", "too many requests"],
+        "auth": ["unauthorized", "invalid api key"],
+        "model_error": ["model not found", "invalid model"]
+      }
+    },
+    "claude": {
+      "name": "Claude Code CLI",
+      "description": "Anthropic Claude Code CLI Interface",
+      "command": "claude",
+      "execution_mode": "flag",
+      "env_var": "CLAUDE_CMD",
+      "default_cmd": ["claude", "-p"],
+      "parameters": {
+        "model": {
+          "flag": "--model",
+          "type": "string",
+          "description": "Model to use (sonnet, opus, haiku, or full model name)",
+          "default": "sonnet",
+          "aliases": {
+            "sonnet": "claude-sonnet-4-5-20250929",
+            "opus": "claude-opus-4-5-20251101",
+            "haiku": "claude-3-5-haiku-20241022"
+          }
+        },
+        "max_turns": {
+          "flag": "--max-turns",
+          "type": "int",
+          "description": "Maximum agentic turns",
+          "default": null
+        },
+        "output_format": {
+          "flag": "--output-format",
+          "type": "string",
+          "description": "Output format (text, json, stream-json)",
+          "default": "text",
+          "options": ["text", "json", "stream-json"]
+        },
+        "allowed_tools": {
+          "flag": "--allowedTools",
+          "type": "string",
+          "description": "Comma-separated list of auto-approved tools",
+          "default": null
+        },
+        "system_prompt": {
+          "flag": "--system-prompt",
+          "type": "string",
+          "description": "Custom system prompt",
+          "default": null
+        },
+        "append_system_prompt": {
+          "flag": "--append-system-prompt",
+          "type": "string",
+          "description": "Append to system prompt",
+          "default": null
+        },
+        "continue": {
+          "flag": "--continue",
+          "type": "boolean",
+          "description": "Continue previous conversation",
+          "default": false
+        },
+        "resume": {
+          "flag": "--resume",
+          "type": "string",
+          "description": "Resume specific session by ID or name",
+          "default": null
+        },
+        "verbose": {
+          "flag": "--verbose",
+          "type": "boolean",
+          "description": "Full turn-by-turn output",
+          "default": false
+        }
+      },
+      "input_mode": "flag_or_stdin",
+      "output_mode": "stdout",
+      "supports_json_output": true,
+      "json_output_flag": "--output-format json",
+      "error_patterns": {
+        "timeout": ["timeout", "timed out"],
+        "rate_limit": ["rate limit", "overloaded"],
+        "auth": ["unauthorized", "invalid api key"],
+        "model_error": ["model not available", "invalid model"]
+      }
+    },
+    "gemini": {
+      "name": "Google Gemini CLI",
+      "description": "Google Gemini CLI Interface",
+      "command": "gemini",
+      "execution_mode": "flag",
+      "env_var": "GEMINI_CMD",
+      "default_cmd": ["gemini", "-p"],
+      "parameters": {
+        "model": {
+          "flag": "-m",
+          "type": "string",
+          "description": "Gemini model to use",
+          "default": "gemini-2.5-pro",
+          "options": [
+            "gemini-2.5-pro",
+            "gemini-2.5-flash",
+            "gemini-2.0-flash",
+            "gemini-1.5-pro"
+          ]
+        },
+        "output_format": {
+          "flag": "--output-format",
+          "type": "string",
+          "description": "Output format (text, json, stream-json)",
+          "default": "text",
+          "options": ["text", "json", "stream-json"]
+        },
+        "include_directories": {
+          "flag": "--include-directories",
+          "type": "string",
+          "description": "Comma-separated directories to include in context",
+          "default": null
+        },
+        "temperature": {
+          "flag": "--temperature",
+          "type": "float",
+          "description": "Sampling temperature",
+          "default": null
+        },
+        "top_p": {
+          "flag": "--top-p",
+          "type": "float",
+          "description": "Nucleus sampling parameter",
+          "default": null
+        },
+        "top_k": {
+          "flag": "--top-k",
+          "type": "int",
+          "description": "Top-k sampling parameter",
+          "default": null
+        }
+      },
+      "input_mode": "flag_or_stdin",
+      "output_mode": "stdout",
+      "supports_json_output": true,
+      "json_output_flag": "--output-format json",
+      "error_patterns": {
+        "timeout": ["timeout", "timed out"],
+        "rate_limit": ["quota exceeded", "rate limit"],
+        "auth": ["authentication failed", "invalid credentials"],
+        "model_error": ["model not found", "invalid model"]
+      }
+    }
+  },
+  "default_provider": "codex",
+  "timeout_multiplier": {
+    "codex": 1.0,
+    "claude": 1.2,
+    "gemini": 1.0
+  },
+  "cost_tracking": {
+    "enabled": false,
+    "providers": {
+      "codex": {
+        "input_cost_per_1k": 0.002,
+        "output_cost_per_1k": 0.006
+      },
+      "claude": {
+        "sonnet": {
+          "input_cost_per_1m": 3.0,
+          "output_cost_per_1m": 15.0
+        },
+        "opus": {
+          "input_cost_per_1m": 15.0,
+          "output_cost_per_1m": 75.0
+        },
+        "haiku": {
+          "input_cost_per_1m": 0.80,
+          "output_cost_per_1m": 4.0
+        }
+      },
+      "gemini": {
+        "gemini-2.5-pro": {
+          "input_cost_per_1m": 1.25,
+          "output_cost_per_1m": 5.0
+        },
+        "gemini-2.5-flash": {
+          "input_cost_per_1m": 0.075,
+          "output_cost_per_1m": 0.30
+        }
+      }
+    }
+  }
+}

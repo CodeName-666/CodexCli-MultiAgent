@@ -22,19 +22,19 @@ Ein Tool zur automatischen Erstellung vollständiger Agent-Familien aus natürli
 Der **Family Creator** (`multi_family_creator.py`) automatisiert die Erstellung kompletter Agent-Familien. Statt manuell 5-7 JSON-Dateien zu schreiben, beschreibst du einfach die Familie in natürlicher Sprache, und Codex CLI generiert:
 
 - **Hauptkonfiguration** (`<family>_main.json`) - Nur family-spezifische Werte (nutzt `defaults.json`)
-- **Alle Rollen-Dateien** (`<family>_roles/*.json`)
+- **Alle Rollen-Dateien** (`<family>_agents/*.json`)
 - **Prompt-Templates** für jede Rolle
 - **Dependencies** zwischen Rollen
 - **Expected-Sections** für Output-Validierung
 
-**NEU:** Family-Configs sind jetzt ~80% kleiner, da globale Einstellungen automatisch aus `config/defaults.json` geladen werden.
+**NEU:** Family-Configs sind jetzt ~80% kleiner, da globale Einstellungen automatisch aus `agent_families/defaults.json` geladen werden.
 
 ### Was wird generiert?
 
 ```
-config/
+agent_families/
 ├── ml_team_main.json              # Haupt-Konfiguration
-└── ml_team_roles/                 # Rollen-Verzeichnis
+└── ml_team_agents/                 # Rollen-Verzeichnis
     ├── data_analyst.json          # Analysiert Daten
     ├── feature_engineer.json      # Erstellt Features
     ├── model_trainer.json         # Trainiert Modelle
@@ -45,7 +45,7 @@ config/
 Jede Familie kann sofort verwendet werden:
 ```bash
 python -m multi_agent.cli \
-  --config config/ml_team_main.json \
+  --config agent_families/ml_team_main.json \
   --task "Entwickle Churn Prediction Model"
 ```
 
@@ -83,8 +83,8 @@ Generiere Prompt-Templates für Rollen...
 Schreibe Familie-Konfiguration...
 
 ✓ Familie erstellt: ml_team
-  Haupt-Config: config/ml_team_main.json
-  Rollen-Dir:   config/ml_team_roles/
+  Haupt-Config: agent_families/ml_team_main.json
+  Rollen-Dir:   agent_families/ml_team_agents/
 ```
 
 ### Mit Optimierung
@@ -425,7 +425,7 @@ Keine Dateien werden geschrieben - nur JSON-Ausgabe.
    ↓
 7. [Dateien schreiben]
    - <family>_main.json
-   - <family>_roles/*.json
+   - <family>_agents/*.json
 ```
 
 ### Codex-Aufrufe
@@ -482,7 +482,7 @@ python creators/multi_family_creator.py \
 
 ### Problem: "Familie existiert bereits"
 
-**Ursache:** `config/<family>_main.json` existiert schon.
+**Ursache:** `agent_families/<family>_main.json` existiert schon.
 
 **Lösung 1 - Überschreiben:**
 ```bash
@@ -522,10 +522,10 @@ Prüfe `depends_on` Fields in Output.
 
 ### Problem: "Template nicht gefunden: developer"
 
-**Ursache:** `config/developer_main.json` existiert nicht.
+**Ursache:** `agent_families/developer_main.json` existiert nicht.
 
 **Lösung:**
-- Prüfe ob Template-Datei existiert: `ls config/developer_main.json`
+- Prüfe ob Template-Datei existiert: `ls agent_families/developer_main.json`
 - Nutze absoluten Pfad: `--template-from /absolute/path/to/config.json`
 - Nutze anderen Template: `--template-from designer`
 

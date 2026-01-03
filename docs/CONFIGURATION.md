@@ -13,8 +13,9 @@ Vollständige Referenz aller Konfigurationsoptionen für den Multi-Agent Codex C
 5. [System-Regeln](#system-regeln)
 6. [Codex-Konfiguration](#codex-konfiguration)
 7. [Snapshot-Konfiguration](#snapshot-konfiguration)
-8. [Prompt-Templates](#prompt-templates)
-9. [Beispiele](#beispiele)
+8. [Streaming-Konfiguration](#streaming-konfiguration)
+9. [Prompt-Templates](#prompt-templates)
+10. [Beispiele](#beispiele)
 
 ---
 
@@ -26,11 +27,11 @@ Die Konfiguration besteht aus zwei Teilen:
 2. **Rollen-Dateien** (`roles/<role>.json`) - Definieren einzelne Agent-Rollen
 
 ```
-config/
+agent_families/
 ├── developer_main.json          # Hauptkonfiguration
 ├── designer_main.json
 ├── docs_main.json
-└── developer_roles/             # Rollen-Definitionen
+└── developer_agents/             # Rollen-Definitionen
     ├── architect.json
     ├── implementer.json
     └── ...
@@ -47,7 +48,7 @@ config/
   "roles": [
     {
       "id": "implementer",
-      "file": "developer_roles/implementer.json"
+      "file": "developer_agents/implementer.json"
     }
   ]
 }
@@ -82,7 +83,7 @@ config/
   "roles": [
     {
       "id": "architect",
-      "file": "developer_roles/architect.json",
+      "file": "developer_agents/architect.json",
       "instances": 1,
       "timeout_sec": 1800,
       "depends_on": [],
@@ -90,7 +91,7 @@ config/
     },
     {
       "id": "implementer",
-      "file": "developer_roles/implementer.json",
+      "file": "developer_agents/implementer.json",
       "instances": 3,
       "timeout_sec": 3600,
       "depends_on": ["architect"],
@@ -111,6 +112,7 @@ config/
 | `system_rules` | string | `""` | Globale System-Anweisungen für alle Agenten |
 | `codex` | object | `{}` | Codex CLI Konfiguration |
 | `snapshot` | object | `{}` | Workspace-Snapshot Konfiguration |
+| `streaming` | object | `{}` | Real-time Streaming Konfiguration |
 | `role_defaults` | object | `{}` | Default-Werte für alle Rollen |
 | `roles` | array | **required** | Liste der Rollen in der Pipeline |
 | `final_role_id` | string | `null` | ID der finalen Rolle (für Summary) |
@@ -124,7 +126,7 @@ config/
 ```json
 {
   "id": "implementer",
-  "file": "developer_roles/implementer.json",
+  "file": "developer_agents/implementer.json",
   "instances": 3,
   "timeout_sec": 3600,
   "depends_on": ["architect"],
@@ -381,6 +383,48 @@ python multi_agent_codex.py \
 
 ---
 
+## Streaming-Konfiguration
+
+Konfiguration fuer Real-time Streaming:
+
+```json
+{
+  "streaming": {
+    "enabled": true,
+    "refresh_rate_hz": 4,
+    "output_preview_lines": 10,
+    "buffer_max_lines": 1000,
+    "token_counting": "heuristic"
+  }
+}
+```
+
+### Felder
+
+| Feld | Typ | Default | Beschreibung |
+|------|-----|---------|--------------|
+| `enabled` | bool | `true` | Aktiviert Live-Streaming |
+| `refresh_rate_hz` | int | `4` | UI-Refresh-Rate in Hz |
+| `output_preview_lines` | int | `10` | Anzahl Zeilen im Output-Preview |
+| `buffer_max_lines` | int | `1000` | Max. Zeilen im Output-Buffer |
+| `token_counting` | string | `"heuristic"` | `heuristic` oder `tiktoken` (optional) |
+
+### Hinweise
+
+- CLI-Override: `--no-streaming` deaktiviert Live-Streaming.
+- Nicht-TTY (CI) schaltet Streaming automatisch ab.
+
+---
+
+## Resume
+
+Wenn ein Run abbricht, wird eine `resume.json` im Run-Verzeichnis geschrieben.
+Fortsetzen ab der naechsten Rolle:
+
+```bash
+python multi_agent_codex.py task --resume-run <run_id_oder_pfad>
+```
+
 ## Prompt-Templates
 
 ### Rollen-Datei (`roles/<role>.json`)
@@ -433,17 +477,17 @@ python multi_agent_codex.py \
   "roles": [
     {
       "id": "architect",
-      "file": "developer_roles/architect.json"
+      "file": "developer_agents/architect.json"
     },
     {
       "id": "implementer",
-      "file": "developer_roles/implementer.json",
+      "file": "developer_agents/implementer.json",
       "depends_on": ["architect"],
       "apply_diff": true
     },
     {
       "id": "tester",
-      "file": "developer_roles/tester.json",
+      "file": "developer_agents/tester.json",
       "depends_on": ["implementer"]
     }
   ],
@@ -472,11 +516,11 @@ architect → implementer (applies diff) → tester
   "roles": [
     {
       "id": "architect",
-      "file": "developer_roles/architect.json"
+      "file": "developer_agents/architect.json"
     },
     {
       "id": "implementer",
-      "file": "developer_roles/implementer.json",
+      "file": "developer_agents/implementer.json",
       "instances": 3,
       "shard_mode": "headings",
       "overlap_policy": "forbid",
@@ -486,7 +530,7 @@ architect → implementer (applies diff) → tester
     },
     {
       "id": "reviewer",
-      "file": "developer_roles/reviewer.json",
+      "file": "developer_agents/reviewer.json",
       "instances": 2,
       "shard_mode": "none",
       "depends_on": ["implementer"]
@@ -515,13 +559,13 @@ reviewer (2 instances in ensemble mode)
   "roles": [
     {
       "id": "ui_designer",
-      "file": "designer_roles/ui_designer.json",
+      "file": "designer_agents/ui_designer.json",
       "instances": 2,
       "shard_mode": "headings"
     },
     {
       "id": "ui_implementer",
-      "file": "developer_roles/implementer.json",
+      "file": "developer_agents/implementer.json",
       "depends_on": ["ui_designer"],
       "instances": 2,
       "shard_mode": "headings",
@@ -529,7 +573,7 @@ reviewer (2 instances in ensemble mode)
     },
     {
       "id": "ux_reviewer",
-      "file": "designer_roles/ux_reviewer.json",
+      "file": "designer_agents/ux_reviewer.json",
       "depends_on": ["ui_implementer"]
     }
   ]
@@ -582,18 +626,18 @@ reviewer (2 instances in ensemble mode)
   "roles": [
     {
       "id": "architect",
-      "file": "developer_roles/architect.json",
+      "file": "developer_agents/architect.json",
       "timeout_sec": 1200
     },
     {
       "id": "implementer",
-      "file": "developer_roles/implementer.json",
+      "file": "developer_agents/implementer.json",
       "timeout_sec": 3600,
       "instances": 3
     },
     {
       "id": "tester",
-      "file": "developer_roles/tester.json",
+      "file": "developer_agents/tester.json",
       "timeout_sec": 2400
     }
   ]

@@ -11,10 +11,11 @@ This script:
 
 from __future__ import annotations
 
-import json
 import sys
 from pathlib import Path
 from typing import Any, Dict
+
+from multi_agent.common_utils import load_json, write_json, deep_merge
 
 # Family-specific keys that should remain in *_main.json
 FAMILY_KEYS = {
@@ -23,27 +24,6 @@ FAMILY_KEYS = {
     "cli",  # Will be filtered to only include "description"
     "diff_safety",  # Will be filtered to only include "allowlist"
 }
-
-
-def load_json(path: Path) -> Dict[str, Any]:
-    """Load JSON file"""
-    return json.loads(path.read_text(encoding="utf-8"))
-
-
-def write_json(path: Path, data: Dict[str, Any]) -> None:
-    """Write JSON file with pretty formatting"""
-    path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-
-
-def deep_merge(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
-    """Deep merge two dictionaries, override wins conflicts"""
-    result = base.copy()
-    for key, value in override.items():
-        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
-            result[key] = deep_merge(result[key], value)
-        else:
-            result[key] = value
-    return result
 
 
 def extract_family_config(full_config: Dict[str, Any]) -> Dict[str, Any]:

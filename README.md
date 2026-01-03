@@ -33,7 +33,9 @@ python multi_agent_codex.py create-role --nl-description "Ein Code Reviewer"
 **Neu hier? Starte mit diesen Guides:**
 
 - **[Quick Start Guide](docs/QUICKSTART.md)** ← **Starte hier!** Eigene Konfiguration in 5 Minuten
-- **[Family Creator](docs/FAMILY_CREATOR.md)** ← **NEU!** Automatische Familie-Generierung via Natural Language
+- **[Multi-CLI Support](docs/MULTI_CLI.md)** ← **NEU!** Verschiedene CLI-Provider (Codex, Claude, Gemini) pro Rolle
+- **[Streaming Guide](docs/STREAMING.md)** - Live Output, Progress, Cancellation
+- **[Family Creator](docs/FAMILY_CREATOR.md)** ← Automatische Familie-Generierung via Natural Language
 - **[Vollständige Konfiguration](docs/CONFIGURATION.md)** - Referenz aller Config-Optionen
 - **[Eigene Rollen erstellen](docs/CUSTOM_ROLES.md)** - Custom Agent-Rollen schreiben
 - **[Sharding (Parallelisierung)](docs/SHARDING.md)** - Echte parallele Agent-Ausführung
@@ -49,15 +51,14 @@ python multi_agent_codex.py create-family --description "Team für X" [optionen]
 # Rolle erstellen (integriert in Haupt-CLI)
 python multi_agent_codex.py create-role --nl-description "Agent für Y" [optionen]
 
-# Standard-Task ausführen (rückwärtskompatibel)
-python multi_agent_codex.py --task "Aufgabe" --apply
+# Standard-Task ausführen
+python multi_agent_codex.py task --task "Aufgabe" --apply
 ```
 
 **Creator-Tools (eigenständig):**
 - **[creators/multi_family_creator.py](creators/multi_family_creator.py)** - Erstelle komplette Familien aus Natural Language
-- **[creators/multi_role_agent_creator.py](creators/multi_role_agent_creator.py)** - Erstelle einzelne Rollen (Natural Language Mode)
+- **[creators/multi_role_agent_creator.py](creators/multi_role_agent_creator.py)** - Erstelle einzelne Rollen via Natural Language
   - **[Natural Language Mode](docs/ROLE_CREATOR_NL.md)** - Rollen via Beschreibung erstellen
-  - **[Legacy Mode](creators/multi_role_agent_creator_legacy.py)** - Manuelle Detail-Kontrolle
 
 Die Creator-Tools können weiterhin eigenständig verwendet werden:
 ```bash
@@ -184,7 +185,7 @@ cd <repo>
 python multi_agent_codex.py --help
 ```
 
-Keine weiteren Dependencies nötig – nutzt nur Python Standard Library!
+Keine weiteren Dependencies noetig fuer den Basismodus. Fuer Live-Streaming optional: `rich` (und `tiktoken` fuer genaues Token-Counting).
 
 ---
 
@@ -226,12 +227,12 @@ python multi_agent_codex.py --task "..."
 
 # Designer für UI-Aufgaben
 python multi_agent_codex.py \
-  --config config/designer_main.json \
+  --config agent_families/designer_main.json \
   --task "Redesigne Dashboard"
 
 # Docs für Dokumentation
 python multi_agent_codex.py \
-  --config config/docs_main.json \
+  --config agent_families/docs_main.json \
   --task "Schreibe API-Dokumentation"
 ```
 
@@ -326,17 +327,17 @@ python multi_agent_codex.py \
 ### Struktur
 
 ```
-config/
+agent_families/
 ├── defaults.json                # ✨ NEUE globale Defaults (gemeinsam für alle Families)
 ├── developer_main.json          # Developer-Pipeline (nur family-spezifisch)
 ├── designer_main.json           # UI/UX-Pipeline (nur family-spezifisch)
 ├── docs_main.json               # Dokumentations-Pipeline (nur family-spezifisch)
-├── developer_roles/
+├── developer_agents/
 │   ├── architect.json
 │   ├── implementer.json
 │   ├── tester.json
 │   └── ...
-└── designer_roles/
+└── designer_agents/
     ├── ui_designer.json
     └── ...
 ```
@@ -353,7 +354,7 @@ Die `*_main.json` Dateien sind jetzt ~80% kleiner und enthalten nur noch Family-
   "roles": [
     {
       "id": "implementer",
-      "file": "developer_roles/implementer.json",
+      "file": "developer_agents/implementer.json",
       "instances": 1,
       "apply_diff": true
     }
@@ -363,14 +364,14 @@ Die `*_main.json` Dateien sind jetzt ~80% kleiner und enthalten nur noch Family-
   },
   "diff_safety": {
     "allowlist": [
-      "config/my_family_main.json",
-      "config/my_family_roles/*"
+      "agent_families/my_family_main.json",
+      "agent_families/my_family_agents/*"
     ]
   }
 }
 ```
 
-**Hinweis:** Alle anderen Werte (system_rules, codex, limits, messages, etc.) werden automatisch aus [defaults.json](config/defaults.json) geladen.
+**Hinweis:** Alle anderen Werte (system_rules, codex, limits, messages, etc.) werden automatisch aus [defaults.json](agent_families/defaults.json) geladen.
 
 **Mit Sharding:**
 ```json
@@ -382,7 +383,7 @@ Die `*_main.json` Dateien sind jetzt ~80% kleiner und enthalten nur noch Family-
   "roles": [
     {
       "id": "implementer",
-      "file": "developer_roles/implementer.json",
+      "file": "developer_agents/implementer.json",
       "instances": 3,
       "shard_mode": "headings",
       "apply_diff": true
@@ -444,7 +445,7 @@ python multi_agent_codex.py --task "Implementiere Feature X"
 **Verwendung:**
 ```bash
 python multi_agent_codex.py \
-  --config config/designer_main.json \
+  --config agent_families/designer_main.json \
   --task "Erstelle Login-Formular"
 ```
 
@@ -460,7 +461,7 @@ python multi_agent_codex.py \
 **Verwendung:**
 ```bash
 python multi_agent_codex.py \
-  --config config/docs_main.json \
+  --config agent_families/docs_main.json \
   --task "Dokumentiere die API"
 ```
 
@@ -476,7 +477,7 @@ python multi_agent_codex.py \
 **Verwendung:**
 ```bash
 python multi_agent_codex.py \
-  --config config/qa_main.json \
+  --config agent_families/qa_main.json \
   --task "Erstelle Testplan für Feature X"
 ```
 
@@ -505,7 +506,7 @@ python multi_agent_codex.py [OPTIONEN]
 | Option | Beschreibung | Beispiel |
 |--------|--------------|----------|
 | `--task` | Aufgabe (inline oder `@datei`) | `--task "Füge Login hinzu"` |
-| `--config` | Config-Datei | `--config config/designer_main.json` |
+| `--config` | Config-Datei | `--config agent_families/designer_main.json` |
 | `--dir` | Arbeitsverzeichnis | `--dir /path/to/project` |
 | `--apply` | Diffs anwenden | `--apply` |
 | `--apply-confirm` | Vor jedem Diff fragen | `--apply-confirm` |
@@ -520,6 +521,8 @@ python multi_agent_codex.py [OPTIONEN]
 | `--fail-fast` | Bei Fehler sofort abbrechen |
 | `--ignore-fail` | Exitcode immer 0 |
 | `--task-split` | Task in mehrere Runs aufteilen |
+| `--no-streaming` | Live-Streaming deaktivieren (fallback auf buffered) |
+| `--resume-run` | Abgebrochenen Run fortsetzen (run_id oder Pfad) |
 | `--max-files` | Max. Dateien im Snapshot |
 | `--max-file-bytes` | Max. Größe pro Datei im Snapshot |
 

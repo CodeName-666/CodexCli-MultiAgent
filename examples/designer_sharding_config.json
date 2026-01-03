@@ -8,7 +8,7 @@
   "roles": [
     {
       "id": "ui_designer",
-      "file": "../config/designer_roles/ui_designer.json",
+      "file": "../agent_families/designer_agents/ui_designer.json",
       "instances": 3,
       "shard_mode": "headings",
       "overlap_policy": "allow",
@@ -16,14 +16,14 @@
     },
     {
       "id": "ux_reviewer",
-      "file": "../config/designer_roles/ux_reviewer.json",
+      "file": "../agent_families/designer_agents/ux_reviewer.json",
       "instances": 2,
       "shard_mode": "none",
       "depends_on": ["ui_designer"]
     },
     {
       "id": "design_integrator",
-      "file": "../config/designer_roles/design_integrator.json",
+      "file": "../agent_families/designer_agents/design_integrator.json",
       "instances": 1,
       "shard_mode": "none",
       "depends_on": ["ux_reviewer"]

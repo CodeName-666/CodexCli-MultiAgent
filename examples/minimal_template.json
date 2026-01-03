@@ -18,7 +18,7 @@
   "roles": [
     {
       "id": "implementer",
-      "file": "developer_roles/implementer.json",
+      "file": "developer_agents/implementer.json",
       "instances": 1,
       "depends_on": [],
       "apply_diff": true
@@ -93,11 +93,11 @@
   "diff_safety": {
     "blocklist": [
       "~/.ssh/*",
-      "config/*"
+      "agent_families/*"
     ],
     "allowlist": [
-      "config/product_main.json",
-      "config/developer_main.json"
+      "agent_families/product_main.json",
+      "agent_families/developer_main.json"
     ]
   },
 

@@ -1,0 +1,159 @@
+{
+  "cli": {
+    "description": "Multi-Agent Orchestrator fuer Design-Rollen (Architect/Implementer/Tester/Reviewer/Integrator)."
+  },
+  "final_role_id": "ui_integrator",
+  "diff_safety": {
+    "allowlist": [
+      "agent_families/developer_main.json",
+      "agent_families/designer_main.json",
+      "agent_families/developer_agents/*",
+      "agent_families/designer_agents/*"
+    ]
+  },
+  "roles": [
+    {
+      "id": "ui_architect",
+      "file": "designer_agents/ui_architect.json",
+      "instances": 1,
+      "depends_on": [],
+      "timeout_sec": 1800,
+      "max_prompt_chars": 16000,
+      "expected_sections": [
+        "# UI-Architektur",
+        "- Ziele:",
+        "- Nutzer/Personas:",
+        "- Informationsarchitektur:",
+        "- UI-Komponenten:",
+        "- Interaktionen/Flows:",
+        "- Risiken:",
+        "- Plan"
+      ],
+      "cli_provider": "claude",
+      "model": "sonnet",
+      "cli_parameters": {
+        "max_turns": 3,
+        "allowed_tools": "Read,Glob,Grep"
+      }
+    },
+    {
+      "id": "ui_designer",
+      "file": "designer_agents/ui_designer.json",
+      "instances": 1,
+      "depends_on": [
+        "ui_architect"
+      ],
+      "expected_sections": [
+        "# UI-Design",
+        "- Design-Konzept:",
+        "- Komponenten/Layout:",
+        "- Design-Entscheidungen:",
+        "- Offene Punkte:"
+      ],
+      "cli_provider": "codex"
+    },
+    {
+      "id": "ui_implementer",
+      "file": "designer_agents/ui_implementer.json",
+      "apply_diff": true,
+      "instances": 1,
+      "depends_on": [
+        "ui_designer"
+      ],
+      "timeout_sec": 900,
+      "expected_sections": [
+        "# UI-Implementierung",
+        "- Dateien neu/aendern (Liste):",
+        "- Implementierungs-Entscheidungen:",
+        "- Offene Punkte:",
+        "```diff"
+      ],
+      "cli_provider": "codex"
+    },
+    {
+      "id": "ui_tester",
+      "file": "designer_agents/ui_tester.json",
+      "apply_diff": true,
+      "instances": 1,
+      "depends_on": [
+        "ui_implementer"
+      ],
+      "timeout_sec": 900,
+      "expected_sections": [
+        "# UI-Tests",
+        "- Teststrategie:",
+        "- Checkliste (A11y/Responsive/States):",
+        "```diff"
+      ],
+      "cli_provider": "gemini",
+      "model": "gemini-2.5-flash",
+      "cli_parameters": {
+        "temperature": 0.5
+      }
+    },
+    {
+      "id": "ui_reviewer",
+      "file": "designer_agents/ui_reviewer.json",
+      "apply_diff": true,
+      "instances": 1,
+      "depends_on": [
+        "ui_tester"
+      ],
+      "timeout_sec": 900,
+      "expected_sections": [
+        "# UI-Review",
+        "- Findings:",
+        "- Risiko/Impact:",
+        "- Empfohlene Aenderungen:",
+        "```diff"
+      ],
+      "cli_provider": "claude",
+      "model": "opus",
+      "cli_parameters": {
+        "max_turns": 2,
+        "append_system_prompt": "Fokus: Security, Performance, Maintainability"
+      }
+    },
+    {
+      "id": "ui_implementer_revision",
+      "file": "designer_agents/ui_implementer_revision.json",
+      "apply_diff": true,
+      "instances": 1,
+      "depends_on": [
+        "ui_reviewer"
+      ],
+      "run_if_review_critical": true,
+      "expected_sections": [
+        "# UI-Implementierung (Revision)",
+        "- Dateien neu/aendern (Liste):",
+        "- Implementierungs-Entscheidungen:",
+        "- Offene Punkte:",
+        "```diff"
+      ],
+      "cli_provider": "codex"
+    },
+    {
+      "id": "ui_integrator",
+      "file": "designer_agents/ui_integrator.json",
+      "instances": 1,
+      "depends_on": [
+        "ui_architect",
+        "ui_designer",
+        "ui_implementer",
+        "ui_tester",
+        "ui_reviewer",
+        "ui_implementer_revision"
+      ],
+      "expected_sections": [
+        "# Final",
+        "- Zusammenfassung:",
+        "- Naechste Schritte:"
+      ],
+      "cli_provider": "claude",
+      "model": "haiku",
+      "cli_parameters": {
+        "max_turns": 1
+      }
+    }
+  ]
+}

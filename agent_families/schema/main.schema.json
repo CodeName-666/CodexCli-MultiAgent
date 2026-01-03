@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": [
+    "system_rules",
+    "roles",
+    "paths",
+    "snapshot",
+    "agent_output",
+    "messages",
+    "diff_messages",
+    "cli"
+  ],
+  "properties": {
+    "system_rules": {"type": "string"},
+    "roles": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "file"],
+        "properties": {
+          "id": {"type": "string"},
+          "file": {"type": "string"},
+          "cli_provider": {
+            "type": "string",
+            "description": "CLI provider to use: codex, claude, or gemini"
+          },
+          "model": {
+            "type": "string",
+            "description": "Model to use (provider-specific)"
+          },
+          "cli_parameters": {
+            "type": "object",
+            "description": "Provider-specific CLI parameters"
+          }
+        }
+      }
+    },
+    "role_defaults": {
+      "type": "object",
+      "properties": {
+        "cli_provider": {
+          "type": "string",
+          "description": "Default CLI provider for all roles"
+        }
+      }
+    },
+    "paths": {"type": "object"},
+    "prompt_limits": {"type": "object"},
+    "task_limits": {"type": "object"},
+    "task_split": {"type": "object"},
+    "snapshot": {"type": "object"},
+    "agent_output": {"type": "object"},
+    "messages": {"type": "object"},
+    "diff_messages": {"type": "object"},
+    "cli": {"type": "object"}
+  }
+}

@@ -1,0 +1,88 @@
+{
+  "cli": {
+    "description": "Multi-Agent Orchestrator fuer Documentation/Enablement Rollen."
+  },
+  "final_role_id": "docs_integrator",
+  "diff_safety": {
+    "allowlist": [
+      "agent_families/docs_main.json",
+      "agent_families/docs_agents/*"
+    ]
+  },
+  "roles": [
+    {
+      "id": "tech_writer",
+      "file": "docs_agents/tech_writer.json",
+      "instances": 1,
+      "depends_on": [],
+      "expected_sections": [
+        "# Dokumentation",
+        "- Zielgruppe:",
+        "- Inhalt/Struktur:",
+        "- Offene Punkte:",
+        "```diff"
+      ],
+      "apply_diff": true,
+      "timeout_sec": 900,
+      "cli_provider": "codex"
+    },
+    {
+      "id": "tutorial_builder",
+      "file": "docs_agents/tutorial_builder.json",
+      "instances": 1,
+      "depends_on": [
+        "tech_writer"
+      ],
+      "expected_sections": [
+        "# Tutorial",
+        "- Ziel:",
+        "- Schritte:",
+        "- Offene Punkte:",
+        "```diff"
+      ],
+      "apply_diff": true,
+      "timeout_sec": 900,
+      "cli_provider": "codex"
+    },
+    {
+      "id": "docs_reviewer",
+      "file": "docs_agents/docs_reviewer.json",
+      "instances": 1,
+      "depends_on": [
+        "tutorial_builder"
+      ],
+      "expected_sections": [
+        "# Docs-Review",
+        "- Findings:",
+        "- Klarheit/Luecken:",
+        "- Empfohlene Aenderungen:"
+      ],
+      "cli_provider": "claude",
+      "model": "opus",
+      "cli_parameters": {
+        "max_turns": 2,
+        "append_system_prompt": "Fokus: Security, Performance, Maintainability"
+      }
+    },
+    {
+      "id": "docs_integrator",
+      "file": "docs_agents/docs_integrator.json",
+      "instances": 1,
+      "depends_on": [
+        "tech_writer",
+        "tutorial_builder",
+        "docs_reviewer"
+      ],
+      "expected_sections": [
+        "# Final",
+        "- Zusammenfassung:",
+        "- Naechste Schritte:"
+      ],
+      "cli_provider": "claude",
+      "model": "haiku",
+      "cli_parameters": {
+        "max_turns": 1
+      }
+    }
+  ]
+}

@@ -1,0 +1,122 @@
+{
+  "cli": {
+    "description": "Multi-Agent Orchestrator für Codex CLI (Architect/Implementer/Tester/Reviewer/Integrator)."
+  },
+  "final_role_id": "integrator",
+  "diff_safety": {
+    "allowlist": [
+      "agent_families/developer_main.json",
+      "agent_families/designer_main.json",
+      "agent_families/developer_agents/*",
+      "agent_families/designer_agents/*"
+    ]
+  },
+  "roles": [
+    {
+      "id": "architect",
+      "file": "developer_agents/architect.json",
+      "instances": 1,
+      "depends_on": [],
+      "timeout_sec": 1800,
+      "max_prompt_chars": 16000,
+      "expected_sections": [
+        "# Architektur",
+        "- Ziele:",
+        "- Komponenten:",
+        "- Datenmodell:",
+        "- API/Interfaces:",
+        "- Risiken:",
+        "- Plan"
+      ],
+      "cli_provider": "codex"
+    },
+    {
+      "id": "implementer",
+      "file": "developer_agents/implementer.json",
+      "apply_diff": true,
+      "instances": 1,
+      "depends_on": [
+        "architect"
+      ],
+      "expected_sections": [
+        "# Implementierung",
+        "- Dateien neu/ändern (Liste):",
+        "- Entscheidungen:",
+        "- Offene Punkte:",
+        "```diff"
+      ],
+      "cli_provider": "codex"
+    },
+    {
+      "id": "tester",
+      "file": "developer_agents/tester.json",
+      "apply_diff": true,
+      "instances": 1,
+      "depends_on": [
+        "implementer"
+      ],
+      "timeout_sec": 900,
+      "expected_sections": [
+        "# Tests",
+        "- Teststrategie:",
+        "- Testfälle:",
+        "```diff"
+      ],
+      "cli_provider": "codex"
+    },
+    {
+      "id": "reviewer",
+      "file": "developer_agents/reviewer.json",
+      "apply_diff": true,
+      "instances": 1,
+      "depends_on": [
+        "tester"
+      ],
+      "timeout_sec": 900,
+      "expected_sections": [
+        "# Review",
+        "- Findings:",
+        "- Risiko/Impact:",
+        "- Empfohlene Änderungen:",
+        "```diff"
+      ],
+      "cli_provider": "codex"
+    },
+    {
+      "id": "implementer_revision",
+      "file": "developer_agents/implementer_revision.json",
+      "apply_diff": true,
+      "instances": 1,
+      "depends_on": [
+        "reviewer"
+      ],
+      "run_if_review_critical": true,
+      "expected_sections": [
+        "# Implementierung (Revision)",
+        "- Dateien neu/ändern (Liste):",
+        "- Entscheidungen:",
+        "- Offene Punkte:",
+        "```diff"
+      ],
+      "cli_provider": "codex"
+    },
+    {
+      "id": "integrator",
+      "file": "developer_agents/integrator.json",
+      "instances": 1,
+      "depends_on": [
+        "architect",
+        "implementer",
+        "tester",
+        "reviewer",
+        "implementer_revision"
+      ],
+      "expected_sections": [
+        "# Final",
+        "- Zusammenfassung:",
+        "- Nächste Schritte:"
+      ],
+      "cli_provider": "codex"
+    }
+  ]
+}

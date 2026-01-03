@@ -73,7 +73,7 @@ Eine **Rolle** ist ein spezialisierter Agent mit einem klar definierten Zweck. R
 
 ### Schritt 1: Rollen-Datei erstellen
 
-Erstelle `config/my_roles/translator.json`:
+Erstelle `agent_families/my_agents/translator.json`:
 
 ```json
 {
@@ -86,7 +86,7 @@ Erstelle `config/my_roles/translator.json`:
 
 ### Schritt 2: In Config einbinden
 
-Erstelle `config/translator_main.json`:
+Erstelle `agent_families/translator_main.json`:
 
 ```json
 {
@@ -94,7 +94,7 @@ Erstelle `config/translator_main.json`:
   "roles": [
     {
       "id": "translator",
-      "file": "my_roles/translator.json",
+      "file": "my_agents/translator.json",
       "instances": 1,
       "apply_diff": true
     }
@@ -107,7 +107,7 @@ Erstelle `config/translator_main.json`:
 
 ```bash
 python multi_agent_codex.py \
-  --config config/translator_main.json \
+  --config agent_families/translator_main.json \
   --task "Translate Python code to Rust"
 ```
 
@@ -242,17 +242,17 @@ architect → implementer → security_auditor → reviewer
     {
       "id": "security_reviewer",
       "depends_on": ["implementer"],
-      "file": "my_roles/security_reviewer.json"
+      "file": "my_agents/security_reviewer.json"
     },
     {
       "id": "performance_reviewer",
       "depends_on": ["implementer"],
-      "file": "my_roles/performance_reviewer.json"
+      "file": "my_agents/performance_reviewer.json"
     },
     {
       "id": "integrator",
       "depends_on": ["security_reviewer", "performance_reviewer"],
-      "file": "developer_roles/integrator.json"
+      "file": "developer_agents/integrator.json"
     }
   ]
 }
@@ -273,7 +273,7 @@ implementer
 
 **1. Rollen definieren:**
 
-`config/marketing_roles/copywriter.json`:
+`agent_families/marketing_agents/copywriter.json`:
 ```json
 {
   "id": "copywriter",
@@ -283,7 +283,7 @@ implementer
 }
 ```
 
-`config/marketing_roles/seo_optimizer.json`:
+`agent_families/marketing_agents/seo_optimizer.json`:
 ```json
 {
   "id": "seo_optimizer",
@@ -295,18 +295,18 @@ implementer
 
 **2. Familie konfigurieren:**
 
-`config/marketing_main.json`:
+`agent_families/marketing_main.json`:
 ```json
 {
   "system_rules": "Du bist ein Marketing-Experte.",
   "roles": [
     {
       "id": "copywriter",
-      "file": "marketing_roles/copywriter.json"
+      "file": "marketing_agents/copywriter.json"
     },
     {
       "id": "seo_optimizer",
-      "file": "marketing_roles/seo_optimizer.json",
+      "file": "marketing_agents/seo_optimizer.json",
       "depends_on": ["copywriter"]
     }
   ],
@@ -317,7 +317,7 @@ implementer
 **3. Nutzen:**
 ```bash
 python multi_agent_codex.py \
-  --config config/marketing_main.json \
+  --config agent_families/marketing_main.json \
   --task "Create landing page copy for new product launch"
 ```
 
@@ -395,7 +395,7 @@ python multi_agent_codex.py \
 
 **Use Case:** Automatisches Erstellen von DB-Migrations basierend auf Model-Änderungen
 
-**Rollen-Datei** (`config/data_roles/migration_generator.json`):
+**Rollen-Datei** (`agent_families/data_agents/migration_generator.json`):
 ```json
 {
   "id": "migration_generator",
@@ -411,7 +411,7 @@ python multi_agent_codex.py \
   "roles": [
     {
       "id": "migration_generator",
-      "file": "data_roles/migration_generator.json",
+      "file": "data_agents/migration_generator.json",
       "apply_diff": true
     }
   ]
@@ -421,7 +421,7 @@ python multi_agent_codex.py \
 **Usage:**
 ```bash
 python multi_agent_codex.py \
-  --config config/data_main.json \
+  --config agent_families/data_main.json \
   --task "Create migration for User model: add email_verified field"
 ```
 
@@ -431,7 +431,7 @@ python multi_agent_codex.py \
 
 **Use Case:** UI/UX Accessibility Review
 
-**Rollen-Datei** (`config/designer_roles/a11y_auditor.json`):
+**Rollen-Datei** (`agent_families/designer_agents/a11y_auditor.json`):
 ```json
 {
   "id": "a11y_auditor",
@@ -447,7 +447,7 @@ python multi_agent_codex.py \
 
 **Use Case:** Performance-Analyse und Optimierungs-Vorschläge
 
-**Rollen-Datei** (`config/developer_roles/performance_profiler.json`):
+**Rollen-Datei** (`agent_families/developer_agents/performance_profiler.json`):
 ```json
 {
   "id": "performance_profiler",
@@ -463,7 +463,7 @@ python multi_agent_codex.py \
 
 **Use Case:** Automatisches Update von Dependencies mit Breaking-Change-Detection
 
-**Rollen-Datei** (`config/devops_roles/dependency_updater.json`):
+**Rollen-Datei** (`agent_families/devops_agents/dependency_updater.json`):
 ```json
 {
   "id": "dependency_updater",
@@ -584,5 +584,5 @@ Shard validation failed: Overlaps detected
 
 - 📖 [Konfiguration](CONFIGURATION.md) - Alle Config-Optionen
 - 📖 [Sharding-Dokumentation](SHARDING.md) - Parallele Ausführung
-- 📁 [Beispiel-Rollen](../config/) - Vordefinierte Rollen
+- 📁 [Beispiel-Rollen](../agent_families/) - Vordefinierte Rollen
 - 📚 [Hauptdokumentation](../README.md) - Zurück zur Übersicht
