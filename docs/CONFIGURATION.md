@@ -438,6 +438,8 @@ python multi_agent_codex.py task --resume-run <run_id_oder_pfad>
 }
 ```
 
+`prompt_template` kann alternativ als Array von Zeilen angegeben werden. Die Eintraege werden mit `\n` zusammengefuegt.
+
 ### Verfügbare Platzhalter
 
 | Platzhalter | Beschreibung | Verfügbar ab |

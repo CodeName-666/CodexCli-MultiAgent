@@ -1,3 +1,5 @@
+"""Load and normalize application configuration from JSON files."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -15,6 +17,7 @@ from .models import (
     DiffMessageCatalog,
     DiffSafetyConfig,
     FeedbackLoopConfig,
+    FormattingConfig,
     LoggingConfig,
     MessageCatalog,
     OutputsConfig,
@@ -30,6 +33,7 @@ from .models import (
 
 
 def _coerce_str_list(value: object) -> list[str]:
+    """Coerce a value into a list of strings."""
     if value is None:
         return []
     if isinstance(value, list):
@@ -37,16 +41,67 @@ def _coerce_str_list(value: object) -> list[str]:
     return [str(value)]
 
 
+def _normalize_prompt_template(value: object, role_path: Path) -> str:
+    """Normalize prompt_template to a single string."""
+    if isinstance(value, list):
+        if not all(isinstance(item, str) for item in value):
+            raise ValueError(f"Role file prompt_template must be list of strings: {role_path}")
+        return "\n".join(value)
+    if isinstance(value, str):
+        return value
+    raise ValueError(f"Role file prompt_template must be string or list of strings: {role_path}")
+
+
+def _append_rule(system_rules: str, rule: str) -> str:
+    """Append a rule to system_rules if it is not already present."""
+    if rule in system_rules:
+        return system_rules
+    if not system_rules.endswith("\n"):
+        system_rules += "\n"
+    return system_rules + rule + "\n"
+
+
+def _apply_formatting_rules(system_rules: str, formatting_cfg: Dict[str, object]) -> str:
+    """Apply formatting-related rules to the system rules string."""
+    if not bool(formatting_cfg.get("enabled", False)):
+        return system_rules
+    if bool(formatting_cfg.get("output_json_as_toon", False)):
+        system_rules = _append_rule(
+            system_rules,
+            "- Wenn du JSON ausgeben wuerdest, gib stattdessen TOON aus.",
+        )
+    extension_map = formatting_cfg.get("extension_map") or {}
+    if isinstance(extension_map, dict):
+        if any(str(target).lower() == "toon" for target in extension_map.values()):
+            system_rules = _append_rule(
+                system_rules,
+                "- JSON-Datei-Inhalte im Snapshot sind in TOON konvertiert.",
+            )
+    if bool(formatting_cfg.get("text_json_to_toon", False)):
+        system_rules = _append_rule(
+            system_rules,
+            "- Wenn du strukturierte JSON-Daten in Markdown/Text ausgeben wuerdest, nutze TOON in ```toon```-Bloecken.",
+        )
+    return system_rules
+
+
 def load_role_config(
     role_entry: Dict[str, object],
     base_dir: Path,
     role_defaults: RoleDefaultsConfig,
 ) -> RoleConfig:
+    """
+    Load a role config entry and resolve defaults and prompt templates.
+
+    Applies CLI provider overrides and sharding-related defaults.
+    """
     role_path = base_dir / str(role_entry["file"])
     data = load_json(role_path)
     role_id = str(role_entry.get("id") or data.get("id") or "")
     if not role_id:
         raise ValueError(f"Role file missing id: {role_path}")
+    if "prompt_template" not in data:
+        raise ValueError(f"Role file missing prompt_template: {role_path}")
     defaults = role_defaults
     timeout_sec = role_entry.get("timeout_sec", defaults.get("timeout_sec"))
     max_output_chars = role_entry.get("max_output_chars", defaults.get("max_output_chars"))
@@ -73,7 +128,7 @@ def load_role_config(
         id=role_id,
         name=str(data.get("name") or role_id),
         role=str(data["role"]),
-        prompt_template=str(data["prompt_template"]),
+        prompt_template=_normalize_prompt_template(data["prompt_template"], role_path),
         apply_diff=bool(role_entry.get("apply_diff", False)),
         instances=max(1, int(role_entry.get("instances", 1))),
         depends_on=_coerce_str_list(role_entry.get("depends_on")),
@@ -137,6 +192,7 @@ def load_app_config(config_path: Path) -> AppConfig:
     task_limits = data.get("task_limits") or {}
     task_split = data.get("task_split") or {}
     streaming = data.get("streaming") or {}
+    formatting = data.get("formatting") or {}
 
     paths_cfg = PathsConfig.from_dict(data.get("paths") or {})
     outputs_cfg = OutputsConfig.from_dict(outputs_raw)
@@ -154,6 +210,7 @@ def load_app_config(config_path: Path) -> AppConfig:
     diff_apply_cfg = DiffApplyConfig(dict(data.get("diff_apply") or {}))
     logging_cfg = LoggingConfig(dict(data.get("logging") or {}))
     feedback_cfg = FeedbackLoopConfig(dict(data.get("feedback_loop") or {}))
+    formatting_cfg = FormattingConfig(dict(formatting or {}))
     coordination_cfg = CoordinationConfig(
         task_board=str(coordination_raw.get("task_board") or ".multi_agent_runs/<run_id>/task_board.json"),
         channel=str(coordination_raw.get("channel") or ".multi_agent_runs/<run_id>/coordination.log"),
@@ -162,8 +219,10 @@ def load_app_config(config_path: Path) -> AppConfig:
         lock_timeout_sec=int(coordination_raw.get("lock_timeout_sec", 10) or 10),
     )
 
+    system_rules = _apply_formatting_rules(str(data["system_rules"]), formatting_cfg.to_dict())
+
     return AppConfig(
-        system_rules=str(data["system_rules"]),
+        system_rules=system_rules,
         roles=roles,
         final_role_id=final_role_id,
         summary_max_chars=int(data.get("summary_max_chars", 1400)),
@@ -186,4 +245,5 @@ def load_app_config(config_path: Path) -> AppConfig:
         diff_apply=diff_apply_cfg,
         logging=logging_cfg,
         feedback_loop=feedback_cfg,
+        formatting=formatting_cfg,
     )

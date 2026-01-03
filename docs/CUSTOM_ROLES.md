@@ -65,7 +65,21 @@ Eine **Rolle** ist ein spezialisierter Agent mit einem klar definierten Zweck. R
 | `id` | string | ✅ | Eindeutige ID (muss mit Config `roles[].id` übereinstimmen) |
 | `name` | string | ✅ | Lesbarer Name (für Logging) |
 | `role` | string | ✅ | Rollen-Beschreibung (z.B. "Software Developer") |
-| `prompt_template` | string | ✅ | Das Prompt-Template mit Platzhaltern |
+| `prompt_template` | string oder string[] | ✅ | Das Prompt-Template mit Platzhaltern |
+
+**Hinweis:** `prompt_template` kann auch als Array von Zeilen definiert werden, die zu einem String zusammengefügt werden.
+
+```json
+{
+  "prompt_template": [
+    "# TASK",
+    "{task}",
+    "",
+    "# WORKSPACE",
+    "{snapshot}"
+  ]
+}
+```
 
 ---
 

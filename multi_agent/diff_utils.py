@@ -1,4 +1,4 @@
-"""Utilities for parsing and analyzing unified diffs."""
+"""Utilities for parsing and analyzing unified diffs and path constraints."""
 
 from __future__ import annotations
 
@@ -64,6 +64,9 @@ def check_path_matches_globs(filepath: str, glob_patterns: list[str]) -> bool:
 
     Returns:
         True if the file matches any pattern, False otherwise
+
+    Notes:
+        Treats ["**"] as match-all and handles patterns ending in "/**" via prefix matching.
     """
     if not glob_patterns:
         return True

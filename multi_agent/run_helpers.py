@@ -1,3 +1,5 @@
+"""Helpers to run the pipeline with optional task splitting."""
+
 from __future__ import annotations
 
 import argparse
@@ -28,6 +30,7 @@ from .utils import now_stamp, parse_cmd, summarize_text
 
 
 async def run_split(pipeline, args: argparse.Namespace, cfg) -> int:
+    """Run the pipeline with task splitting and resume support."""
     workdir = Path(args.dir).resolve()
     try:
         task_text, task_source = load_task_text(args.task, workdir)
@@ -60,6 +63,12 @@ async def run_split(pipeline, args: argparse.Namespace, cfg) -> int:
             headings = extract_headings(task_text, heading_level)
             max_headings = int(split_cfg.get("llm_max_headings", 60) or 60)
             timeout_sec = int(split_cfg.get("llm_timeout_sec", 120) or 120)
+            formatting_cfg = cfg.formatting.to_dict()
+            use_toon = bool(
+                formatting_cfg.get("enabled", False)
+                and formatting_cfg.get("output_json_as_toon", False)
+            )
+            output_format = "toon" if use_toon else "json"
             raw_cmd = str(split_cfg.get("llm_cmd") or "").strip()
             if raw_cmd:
                 codex_cmd = parse_cmd(raw_cmd)
@@ -72,7 +81,14 @@ async def run_split(pipeline, args: argparse.Namespace, cfg) -> int:
                     model=None,
                     timeout_sec=timeout_sec,
                 )
-            plan = plan_chunks_with_llm(headings, codex_cmd, timeout_sec, max_headings)
+            plan = plan_chunks_with_llm(
+                headings,
+                codex_cmd,
+                timeout_sec,
+                max_headings,
+                output_format=output_format,
+                formatting=formatting_cfg,
+            )
             chunks = build_chunks_from_plan(task_text, headings, plan)
         if not chunks:
             chunks = split_task_markdown(task_text, heading_level, min_chars, max_chars)
@@ -140,6 +156,7 @@ async def run_split(pipeline, args: argparse.Namespace, cfg) -> int:
 
 
 def run_pipeline(args: argparse.Namespace, cfg) -> int:
+    """Run the pipeline entrypoint with optional task splitting."""
     pipeline = build_pipeline()
     try:
         split_enabled = bool(args.task_split) or bool(cfg.task_split.get("enabled", False))

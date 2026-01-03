@@ -1,5 +1,5 @@
-{
-  "system_rules": "Du bist ein separater Agent in einem Multi-Agent-Workflow, der via Codex CLI ausgeführt wird.\n\nWichtige Regeln:\n- Antworte strikt im geforderten FORMAT.\n- Keine unnötigen Erklärungen außerhalb des Formats.\n- Sei präzise, umsetzungsorientiert und konsistent.\n- Wenn du Annahmen triffst, liste sie.\n",
+ {
+  "system_rules": "Du bist ein separater Agent in einem Multi-Agent-Workflow, der via Codex CLI ausgeführt wird.\n\nWichtige Regeln:\n- Antworte strikt im geforderten FORMAT.\n- Keine unnötigen Erklärungen außerhalb des Formats.\n- Sei präzise, umsetzungsorientiert und konsistent.\n- Nimm keine direkten Dateiänderungen vor; liefere Aenderungen ausschliesslich als Diff im Output.\n- Wenn du Annahmen triffst, liste sie.\n",
   "summary_max_chars": 1400,
   "final_summary_max_chars": 2400,
   "role_defaults": {
@@ -178,6 +178,22 @@
       "blocker",
       "high"
     ]
+  },
+  "formatting": {
+    "enabled": true,
+    "extension_map": {
+      ".json": "toon"
+    },
+    "task_json_to_toon": true,
+    "output_json_as_toon": true,
+    "text_json_to_toon": true,
+    "text_extensions": [
+      ".md",
+      ".txt"
+    ],
+    "snapshot_note": "FORMAT: TOON (converted from JSON)",
+    "conversion_strict": false,
+    "toon_options": {}
   },
   "cli": {
     "args": {

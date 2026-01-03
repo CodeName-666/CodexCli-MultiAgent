@@ -1,3 +1,5 @@
+"""Optional rich progress display for streaming agent output."""
+
 from __future__ import annotations
 
 import time
@@ -27,6 +29,7 @@ class AgentProgressDisplay:
         stream_label: str = "",
         force_plain: bool = False,
     ) -> None:
+        """Initialize display settings and buffering state."""
         self.refresh_rate_hz = max(1, int(refresh_rate_hz))
         self.output_preview_lines = max(1, int(output_preview_lines))
         self.buffer_max_lines = max(50, int(buffer_max_lines))
@@ -56,11 +59,13 @@ class AgentProgressDisplay:
             self.progress = None
 
     def __rich__(self) -> Group:
+        """Return a rich renderable for live updates."""
         if not self.use_rich:
             return Group()
         return self.render()
 
     def start_agent(self, agent_name: str) -> None:
+        """Start tracking a new agent stream."""
         self.start_time = time.monotonic()
         if not self.stream_label:
             self.stream_label = agent_name
@@ -75,6 +80,7 @@ class AgentProgressDisplay:
         )
 
     def update(self, chunk: str, tokens: int, elapsed: float) -> None:
+        """Update the display with streaming data."""
         self.token_count = tokens
         if not self.use_rich:
             if chunk:
@@ -93,6 +99,7 @@ class AgentProgressDisplay:
         )
 
     def render(self) -> Group:
+        """Render the progress display as a rich Group."""
         if not self.use_rich:
             return Group()
         output_preview = "\n".join(self.output_buffer[-self.output_preview_lines :]) or "(no output yet)"
@@ -104,12 +111,14 @@ class AgentProgressDisplay:
         return Group(self.progress, output_panel)
 
     def _estimate_progress(self, tokens: int) -> float:
+        """Estimate progress percentage from token count."""
         if self.expected_tokens <= 0:
             return 50.0
         progress = (tokens / self.expected_tokens) * 100
         return min(95.0, progress)
 
     def _add_to_buffer(self, text: str) -> None:
+        """Append output text to the buffered preview."""
         lines = text.splitlines()
         if not lines and text:
             lines = [text]
@@ -128,6 +137,7 @@ class AgentProgressDisplay:
         )
 
     def _print_plain(self, text: str) -> None:
+        """Print streaming output in plain text mode."""
         label = self.stream_label.strip()
         prefix = f"[{label}] " if label else ""
         lines = text.splitlines()

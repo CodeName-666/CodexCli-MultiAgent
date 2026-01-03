@@ -57,12 +57,7 @@
         "- Klarheit/Luecken:",
         "- Empfohlene Aenderungen:"
       ],
-      "cli_provider": "claude",
-      "model": "opus",
-      "cli_parameters": {
-        "max_turns": 2,
-        "append_system_prompt": "Fokus: Security, Performance, Maintainability"
-      }
+      "cli_provider": "codex"
     },
     {
       "id": "docs_integrator",
@@ -78,11 +73,7 @@
         "- Zusammenfassung:",
         "- Naechste Schritte:"
       ],
-      "cli_provider": "claude",
-      "model": "haiku",
-      "cli_parameters": {
-        "max_turns": 1
-      }
+      "cli_provider": "codex"
     }
   ]
 }

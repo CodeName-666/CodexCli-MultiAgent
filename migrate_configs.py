@@ -1,12 +1,9 @@
 #!/usr/bin/env python3
 """
-migrate_configs.py - Migrate *_main.json files to use defaults.json
+migrate_configs.py - Migrate *_main.json files to use defaults.json.
 
-This script:
-1. Reads all *_main.json files in config/
-2. Extracts only family-specific values
-3. Rewrites each *_main.json with reduced content
-4. Validates that merged config equals original config
+Reads all *_main.json files, extracts family-specific values, validates
+merging against defaults.json, and rewrites configs (with backups).
 """
 
 from __future__ import annotations
@@ -27,7 +24,11 @@ FAMILY_KEYS = {
 
 
 def extract_family_config(full_config: Dict[str, Any]) -> Dict[str, Any]:
-    """Extract only family-specific configuration"""
+    """
+    Extract only family-specific configuration keys.
+
+    Filters the `cli` section to description-only and `diff_safety` to allowlist-only.
+    """
     family_config = {}
 
     # Extract family-specific top-level keys
@@ -57,7 +58,11 @@ def validate_migration(
     defaults: Dict[str, Any],
     family: Dict[str, Any]
 ) -> bool:
-    """Validate that merging defaults + family gives back the original"""
+    """
+    Validate that defaults + family merges back to the original config.
+
+    Compares top-level keys, critical sections, and cli.description consistency.
+    """
     merged = deep_merge(defaults, family)
 
     # Compare all keys
@@ -93,7 +98,11 @@ def migrate_file(
     defaults: Dict[str, Any],
     dry_run: bool = False
 ) -> bool:
-    """Migrate a single *_main.json file"""
+    """
+    Migrate a single *_main.json file.
+
+    Prints size deltas, validates merge results, and writes backups unless dry-run.
+    """
     print(f"\nProcessing: {config_path.name}")
 
     # Load original config
@@ -127,7 +136,7 @@ def migrate_file(
 
 
 def main():
-    """Main migration script"""
+    """Run migration across a config directory with optional dry-run."""
     import argparse
 
     parser = argparse.ArgumentParser(description="Migrate *_main.json configs to use defaults.json")

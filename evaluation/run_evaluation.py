@@ -17,6 +17,7 @@ class EvaluationRunner:
     """Manages evaluation runs and result tracking."""
 
     def __init__(self, output_dir: Path = None):
+        """Initialize the runner and ensure output directory exists."""
         self.output_dir = output_dir or Path("evaluation/results")
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.current_test = None
@@ -193,7 +194,11 @@ class EvaluationRunner:
 
 
 def interactive_mode():
-    """Interactive evaluation session."""
+    """
+    Interactive evaluation session.
+
+    Collects task metadata, manual ratings, and optional comparison queries.
+    """
     runner = EvaluationRunner()
 
     print("\n=== Multi-Agent Evaluation Tool ===\n")
@@ -251,6 +256,7 @@ def interactive_mode():
 
 
 def main():
+    """CLI entry point for evaluation runner."""
     parser = argparse.ArgumentParser(
         description="Evaluation runner for Multi-Agent vs CLI comparison"
     )

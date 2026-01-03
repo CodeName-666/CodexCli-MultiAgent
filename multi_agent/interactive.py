@@ -1,3 +1,5 @@
+"""Interactive CLI flows for configuring and running tasks."""
+
 from __future__ import annotations
 
 import argparse
@@ -8,7 +10,13 @@ from typing import List, Optional
 
 from .cli_errors import print_error
 from .config_loader import load_app_config
-from .constants import DEFAULT_MAX_FILE_BYTES, DEFAULT_MAX_FILES, DEFAULT_TIMEOUT_SEC, ExitCode
+from .constants import (
+    DEFAULT_MAX_FILE_BYTES,
+    DEFAULT_MAX_FILES,
+    DEFAULT_TIMEOUT_SEC,
+    ExitCode,
+    get_agent_families_dir,
+)
 from .run_helpers import run_pipeline
 
 
@@ -71,7 +79,7 @@ Beispiele:
 
 def _select_family_interactive() -> Optional[Path]:
     """Interactively select a family from available options."""
-    families_dir = Path("agent_families")
+    families_dir = get_agent_families_dir()
     if not families_dir.exists():
         print_error("agent_families/ Verzeichnis nicht gefunden.")
         return None
@@ -113,7 +121,7 @@ def _select_family_interactive() -> Optional[Path]:
 
 def _get_family_from_args(family_name: str) -> Optional[Path]:
     """Get family path from CLI argument."""
-    families_dir = Path("agent_families")
+    families_dir = get_agent_families_dir()
     family_path = families_dir / f"{family_name}_main.json"
     if not family_path.exists():
         print_error(f"Familie nicht gefunden: {family_name}")
@@ -204,7 +212,11 @@ def _print_run_summary(family_path: Path, task: str, options: dict) -> None:
 
 
 def interactive_run(argv: Optional[List[str]] = None) -> int:
-    """Interactive/CLI hybrid mode - ask user for missing inputs or use CLI args."""
+    """
+    Interactive/CLI hybrid mode.
+
+    Prompts for missing inputs, summarizes options, and runs the pipeline.
+    """
     args = parse_args_run(argv)
 
     has_family = args.family is not None

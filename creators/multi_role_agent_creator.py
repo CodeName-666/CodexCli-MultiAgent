@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """
-multi_role_agent_creator.py - create a new role JSON and register it in a main config.
+multi_role_agent_creator.py - create role JSON and register it in a main config.
 
-Uses Natural Language mode to generate role specifications via LLM.
+Uses Natural Language mode to generate role specifications via Codex CLI and
+adds the repository root to sys.path for local imports.
 """
 
 from __future__ import annotations
@@ -15,16 +16,15 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Tuple
 
-# Add parent directory to path so we can import multi_agent modules
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from multi_agent.cli_adapter import CLIAdapter
 from multi_agent.common_utils import load_json, write_json, deep_merge, slugify
 from multi_agent.constants import get_static_config_dir, DEFAULT_CONFIG_PATH
+from multi_agent.format_converter import FormatConversionError, build_default_converter
 from multi_agent.utils import parse_cmd
-from creators.codex_client import call_codex, extract_json_from_markdown
+from creators.codex_client import call_codex, extract_payload_from_markdown
 
-# Constants
 DEFAULT_FORMAT_SECTIONS = ["- Aufgaben:", "- Entscheidungen:", "- Offene Punkte:"]
 DEFAULT_RULE_LINES = [
     "Ausgabe muss exakt diese Abschnittsmarker enthalten.",
@@ -51,6 +51,55 @@ def load_config_with_defaults(config_path: Path) -> Dict[str, object]:
     defaults = load_json(defaults_path)
     family_config = load_json(config_path)
     return deep_merge(defaults, family_config)
+
+
+def resolve_output_format(config: Dict[str, object]) -> str:
+    """
+    Resolve output format from formatting configuration.
+
+    Returns "toon" when formatting is enabled and output_json_as_toon is true,
+    otherwise returns "json".
+    """
+    formatting_cfg = config.get("formatting") or {}
+    if isinstance(formatting_cfg, dict):
+        if bool(formatting_cfg.get("enabled", False)) and bool(formatting_cfg.get("output_json_as_toon", False)):
+            return "toon"
+    return "json"
+
+
+def _role_spec_template(lang: str) -> Dict[str, object]:
+    """Return a role spec template skeleton for the given language."""
+    if lang == "de":
+        description = "<2-4 Saetze: Was macht diese Rolle?>"
+        diff_text = "<Text fuer Diff-Anweisung> (optional)"
+        format_sections = ["- Aufgaben:", "- Entscheidungen:", "- Offene Punkte:"]
+        rule_lines = ["Regel 1", "Regel 2"]
+        arch_label = "ARCHITEKTUR (Kurz)"
+    else:
+        description = "<2-4 sentences: What does this role do?>"
+        diff_text = "<Text for diff instructions> (optional)"
+        format_sections = ["- Tasks:", "- Decisions:", "- Open Points:"]
+        rule_lines = ["Rule 1", "Rule 2"]
+        arch_label = "ARCHITECTURE (Short)"
+    return {
+        "id": "<role_id>",
+        "name": "<Role Name>",
+        "role_label": "<Job Title>",
+        "title": "<Prompt Title>",
+        "description": description,
+        "apply_diff": "<true_or_false>",
+        "expected_sections": ["# Title", "- Section 1:", "- Section 2:"],
+        "format_sections": format_sections,
+        "rule_lines": rule_lines,
+        "context_entries": [
+            {"key": "architect_summary", "label": arch_label},
+            {"key": "snapshot", "label": "WORKSPACE"},
+        ],
+        "diff_instructions": diff_text,
+        "depends_on": ["<other_role_id>"],
+        "timeout_sec": "<optional override>",
+        "max_output_chars": "<optional override>",
+    }
 
 
 def resolve_role_path(base_dir: Path, role_file: str) -> Tuple[Path, str]:
@@ -152,18 +201,34 @@ def build_role_spec_prompt(
     family_context: str,
     lang: str,
     extra_instructions: str,
+    output_format: str = "json",
+    formatting: Dict[str, object] | None = None,
 ) -> str:
     """
     Generate prompt for Codex to create role specification from natural language.
 
-    Similar to build_family_spec_prompt but for a single role.
+    Similar to build_family_spec_prompt but for a single role and output format.
+    Optionally appends extra instructions and a strict output reminder.
     """
+    formatting_cfg = formatting or {}
+    output_label = "TOON" if output_format == "toon" else "JSON"
+    template_obj = _role_spec_template(lang)
+    if output_format == "toon":
+        converter = build_default_converter(formatting_cfg)
+        template_text = converter.encode(template_obj, "toon")
+        if lang == "de":
+            format_note = "TOON ist eine lossless JSON-Notation. Nutze TOON, nicht JSON."
+        else:
+            format_note = "TOON is a lossless JSON notation. Use TOON, not JSON."
+    else:
+        template_text = json.dumps(template_obj, indent=2, ensure_ascii=True)
+        format_note = ""
 
     if lang == "de":
-        base_instructions = """Du bist ein Experte für Multi-Agent-Systeme. Erstelle eine vollständige Spezifikation für eine einzelne Agent-Rolle.
+        base_instructions = """Du bist ein Experte fuer Multi-Agent-Systeme. Erstelle eine vollstaendige Spezifikation fuer eine einzelne Agent-Rolle.
 
 AUFGABE:
-Basierend auf der folgenden Beschreibung, generiere eine strukturierte Rollen-Spezifikation im JSON-Format.
+Basierend auf der folgenden Beschreibung, generiere eine strukturierte Rollen-Spezifikation im {output_label}-Format.
 
 BESCHREIBUNG:
 {description}
@@ -171,41 +236,24 @@ BESCHREIBUNG:
 KONTEXT (Familie):
 {family_context}
 
-AUSGABE-FORMAT (JSON):
-{{
-  "id": "<role_id>",
-  "name": "<Role Name>",
-  "role_label": "<Job Title>",
-  "title": "<Prompt Title>",
-  "description": "<2-4 Sätze: Was macht diese Rolle?>",
-  "apply_diff": true/false,
-  "expected_sections": ["# Title", "- Section 1:", "- Section 2:"],
-  "format_sections": ["- Aufgaben:", "- Entscheidungen:", "- Offene Punkte:"],
-  "rule_lines": ["Regel 1", "Regel 2"],
-  "context_entries": [
-    {{"key": "architect_summary", "label": "ARCHITEKTUR (Kurz)"}},
-    {{"key": "snapshot", "label": "WORKSPACE"}}
-  ],
-  "diff_instructions": "<Text für Diff-Anweisung>" (optional),
-  "depends_on": ["<other_role_id>"],
-  "timeout_sec": <optional override>,
-  "max_output_chars": <optional override>
-}}
+AUSGABE-FORMAT ({output_label}):
+__TEMPLATE__
+{format_note}
 
 REGELN:
 1. Role-ID: Lowercase mit Unterstrichen (z.B., "code_reviewer")
-2. Apply-Diff: true nur wenn diese Rolle Code/Dateien ändert
+2. Apply-Diff: true nur wenn diese Rolle Code/Dateien aendert
 3. Expected-Sections: Definiere klare Output-Struktur
 4. Format-Sections: Strukturiere das erwartete Output-Format
-5. Context-Entries: Welche Inputs benötigt die Rolle? (task + snapshot sind immer dabei)
+5. Context-Entries: Welche Inputs benoetigt die Rolle? (task + snapshot sind immer dabei)
 6. Dependencies: Falls die Rolle Output anderer Rollen braucht
 7. Diff-Instructions: Falls apply_diff=true, definiere Diff-Format-Anweisungen
-8. Description: Handlungsorientiert, präzise in 2-4 Sätzen"""
+8. Description: Handlungsorientiert, praezise in 2-4 Saetzen"""
     else:
         base_instructions = """You are an expert in multi-agent systems. Create a complete specification for a single agent role.
 
 TASK:
-Based on the following description, generate a structured role specification in JSON format.
+Based on the following description, generate a structured role specification in {output_label} format.
 
 DESCRIPTION:
 {description}
@@ -213,26 +261,9 @@ DESCRIPTION:
 CONTEXT (Family):
 {family_context}
 
-OUTPUT FORMAT (JSON):
-{{
-  "id": "<role_id>",
-  "name": "<Role Name>",
-  "role_label": "<Job Title>",
-  "title": "<Prompt Title>",
-  "description": "<2-4 sentences: What does this role do?>",
-  "apply_diff": true/false,
-  "expected_sections": ["# Title", "- Section 1:", "- Section 2:"],
-  "format_sections": ["- Tasks:", "- Decisions:", "- Open Points:"],
-  "rule_lines": ["Rule 1", "Rule 2"],
-  "context_entries": [
-    {{"key": "architect_summary", "label": "ARCHITECTURE (Short)"}},
-    {{"key": "snapshot", "label": "WORKSPACE"}}
-  ],
-  "diff_instructions": "<Text for diff instructions>" (optional),
-  "depends_on": ["<other_role_id>"],
-  "timeout_sec": <optional override>,
-  "max_output_chars": <optional override>
-}}
+OUTPUT FORMAT ({output_label}):
+__TEMPLATE__
+{format_note}
 
 RULES:
 1. Role-ID: Lowercase with underscores (e.g., "code_reviewer")
@@ -246,21 +277,21 @@ RULES:
 
     prompt_parts = [base_instructions.format(
         description=description,
-        family_context=family_context
-    )]
+        family_context=family_context,
+        output_label=output_label,
+        format_note=format_note,
+    ).replace("__TEMPLATE__", template_text)]
 
-    # Extra instructions
     if extra_instructions:
         if lang == "de":
             prompt_parts.append(f"\nZUSÄTZLICHE ANFORDERUNGEN:\n{extra_instructions}")
         else:
             prompt_parts.append(f"\nADDITIONAL REQUIREMENTS:\n{extra_instructions}")
 
-    # Final output reminder
     if lang == "de":
-        prompt_parts.append("\nGIB NUR VALIDES JSON AUS. KEINE ERKLÄRUNGEN AUSSERHALB DES JSON.")
+        prompt_parts.append(f"\nGIB NUR VALIDES {output_label} AUS. KEINE ERKLAERUNGEN AUSSERHALB DES {output_label}.")
     else:
-        prompt_parts.append("\nOUTPUT ONLY VALID JSON. NO EXPLANATIONS OUTSIDE JSON.")
+        prompt_parts.append(f"\nOUTPUT ONLY VALID {output_label}. NO EXPLANATIONS OUTSIDE {output_label}.")
 
     return "\n\n".join(prompt_parts)
 
@@ -272,20 +303,24 @@ def generate_role_spec_via_codex(
 ) -> Dict:
     """
     Generate role specification via Codex from natural language description.
+
+    Builds the prompt, resolves the CLI command, and parses JSON or TOON output.
     """
-    # Get family context
     family_name = Path(args.config).stem.replace("_main", "")
     family_context = f"Familie: {family_name}"
 
-    # Build prompt
+    output_format = resolve_output_format(config)
+    formatting_cfg = dict(config.get("formatting") or {})
+
     prompt = build_role_spec_prompt(
         description=description,
         family_context=family_context,
         lang=args.lang,
         extra_instructions=args.extra_instructions or "",
+        output_format=output_format,
+        formatting=formatting_cfg,
     )
 
-    # Get CLI command via CLIAdapter
     if args.codex_cmd_override:
         codex_cmd = parse_cmd(args.codex_cmd_override)
     else:
@@ -294,22 +329,24 @@ def generate_role_spec_via_codex(
             provider_id=None, prompt=None, model=None, timeout_sec=None
         )
 
-    # Call Codex
     stdout = call_codex(prompt, codex_cmd, args.nl_timeout_sec)
 
-    # Parse JSON
     try:
-        json_text = extract_json_from_markdown(stdout)
-        role_spec = json.loads(json_text)
-    except json.JSONDecodeError as exc:
-        print(f"Fehler: Codex lieferte invalides JSON:\n{stdout}", file=sys.stderr)
-        raise RuntimeError(f"JSON Parse Error: {exc}") from exc
+        payload_text = extract_payload_from_markdown(stdout, output_format)
+        if output_format == "toon":
+            converter = build_default_converter(formatting_cfg)
+            role_spec = converter.decode(payload_text, "toon")
+        else:
+            role_spec = json.loads(payload_text)
+    except (FormatConversionError, json.JSONDecodeError, ValueError) as exc:
+        print(f"Fehler: Codex lieferte invalides {output_format.upper()}:\n{stdout}", file=sys.stderr)
+        raise RuntimeError(f"{output_format.upper()} Parse Error: {exc}") from exc
 
     return role_spec
 
 
 def parse_args(argv: List[str] | None = None) -> argparse.Namespace:
-    """Parse command-line arguments for Natural Language mode."""
+    """Parse command-line arguments for Natural Language role creation."""
     p = argparse.ArgumentParser(
         description="Create a new role JSON and update a main config file.\n\n"
                     "Uses Natural Language mode to automatically generate role specifications via LLM.",
@@ -349,7 +386,6 @@ def parse_args(argv: List[str] | None = None) -> argparse.Namespace:
         help="Show generated spec without writing files"
     )
 
-    # === COMMON OPTIONS ===
     common_group = p.add_argument_group("Common options")
     common_group.add_argument("--file", dest="role_file", help="Role file path relative to agent_families/ (default: <family>_agents/<id>.json).")
     common_group.add_argument("--apply-diff", action="store_true", help="Mark role as producing a diff to auto-apply.")
@@ -372,7 +408,6 @@ def parse_args(argv: List[str] | None = None) -> argparse.Namespace:
     common_group.add_argument("--model", help="Model override for this role.")
     common_group.add_argument("--run-if-review-critical", action="store_true", help="Run only if review is critical.")
 
-    # === CONFIG & OUTPUT ===
     p.add_argument("--config", default=str(DEFAULT_CONFIG_PATH), help="Path to main config (e.g. agent_families/developer_main.json).")
     p.add_argument("--force", action="store_true", help="Overwrite existing role file and id entry.")
 
@@ -381,7 +416,7 @@ def parse_args(argv: List[str] | None = None) -> argparse.Namespace:
 
 def main_natural_language(args: argparse.Namespace, config: Dict, config_path: Path) -> None:
     """
-    Natural Language mode - similar to family creator.
+    Natural Language mode - generate spec, materialize role JSON, and update config.
     """
     print(f"Generiere Rollen-Spezifikation via Codex (Natural Language Mode)...")
 
@@ -392,12 +427,10 @@ def main_natural_language(args: argparse.Namespace, config: Dict, config_path: P
         print(f"Fehler: {exc}", file=sys.stderr)
         sys.exit(2)
 
-    # Dry-run check
     if args.dry_run:
         print(json.dumps(role_spec, indent=2, ensure_ascii=False))
         return
 
-    # Extract fields from spec
     role_id = role_spec.get("id", slugify(args.nl_description))
     role_name = role_spec.get("name", role_id)
     role_label = role_spec.get("role_label", role_name)
@@ -413,7 +446,6 @@ def main_natural_language(args: argparse.Namespace, config: Dict, config_path: P
     timeout_sec = role_spec.get("timeout_sec")
     max_output_chars = role_spec.get("max_output_chars")
 
-    # Parse context entries
     context_entries = []
     for entry in context_entries_raw:
         if isinstance(entry, dict):
@@ -425,7 +457,6 @@ def main_natural_language(args: argparse.Namespace, config: Dict, config_path: P
             else:
                 context_entries.append((entry.strip(), entry.strip()))
 
-    # Build prompt template
     prompt_template = build_prompt_template(
         title=title,
         description=description,
@@ -440,7 +471,6 @@ def main_natural_language(args: argparse.Namespace, config: Dict, config_path: P
         include_snapshot=True,
     )
 
-    # Determine role file path
     base_dir = config_path.parent
     default_role_dir = "developer_roles"
     stem = config_path.stem
@@ -452,7 +482,6 @@ def main_natural_language(args: argparse.Namespace, config: Dict, config_path: P
     role_file = args.role_file or f"{default_role_dir}/{role_id}.json"
     role_path, role_rel_path = resolve_role_path(base_dir, role_file)
 
-    # Check if exists
     roles = list(config.get("roles", []))
     if any(role.get("id") == role_id for role in roles):
         if not args.force:
@@ -465,7 +494,6 @@ def main_natural_language(args: argparse.Namespace, config: Dict, config_path: P
         print(f"Fehler: Rollen-Datei existiert bereits: {role_path}", file=sys.stderr)
         sys.exit(2)
 
-    # Write role JSON
     role_data = {
         "id": role_id,
         "name": role_name,
@@ -476,7 +504,6 @@ def main_natural_language(args: argparse.Namespace, config: Dict, config_path: P
     write_json(role_path, role_data)
     print(f"✓ Rollen-Datei erstellt: {role_path}")
 
-    # Build entry for main config
     entry: Dict[str, object] = {
         "id": role_id,
         "file": role_rel_path,
@@ -500,7 +527,6 @@ def main_natural_language(args: argparse.Namespace, config: Dict, config_path: P
     if expected_sections:
         entry["expected_sections"] = expected_sections
 
-    # Insert into config
     final_role_id = config.get("final_role_id")
     roles = insert_role_entry(roles, entry, args.insert_after, final_role_id)
     config["roles"] = roles
@@ -527,7 +553,6 @@ def main() -> None:
         print(f"Error: invalid config JSON: {exc}", file=sys.stderr)
         sys.exit(2)
 
-    # Natural Language Mode
     if not args.nl_description:
         print("Fehler: --nl-description ist erforderlich", file=sys.stderr)
         print("\nBeispiel:", file=sys.stderr)

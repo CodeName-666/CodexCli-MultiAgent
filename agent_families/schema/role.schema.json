@@ -6,6 +6,11 @@
     "id": {"type": "string"},
     "name": {"type": "string"},
     "role": {"type": "string"},
-    "prompt_template": {"type": "string"}
+    "prompt_template": {
+      "anyOf": [
+        {"type": "string"},
+        {"type": "array", "items": {"type": "string"}}
+      ]
+    }
   }
 }

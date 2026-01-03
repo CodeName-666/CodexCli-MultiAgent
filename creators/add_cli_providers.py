@@ -2,6 +2,7 @@
 CLI Provider Configuration Tool
 
 Fügt CLI-Provider-Konfiguration zu Agent-Familien oder einzelnen Agents hinzu.
+Empfehlungen sind optional und werden nur interaktiv vorgeschlagen.
 
 Drei Modi:
 1. Family-Modus: Setzt ALLE Rollen einer Familie auf denselben Provider
@@ -72,7 +73,7 @@ PROVIDER_RECOMMENDATIONS = {
 
 
 def detect_role_type(role_id: str) -> str:
-    """Detect role type from role ID (for recommendations only)."""
+    """Detect role type from role ID for optional recommendations."""
     role_id_lower = role_id.lower()
 
     if 'architect' in role_id_lower:
@@ -90,13 +91,13 @@ def detect_role_type(role_id: str) -> str:
 
 
 def get_recommendation_for_role(role_id: str) -> Optional[dict]:
-    """Get recommended CLI configuration for a role (optional)."""
+    """Return an optional CLI recommendation for the given role ID."""
     role_type = detect_role_type(role_id)
     return PROVIDER_RECOMMENDATIONS.get(role_type)
 
 
 def format_cli_config(role: dict) -> str:
-    """Format current CLI config as readable string."""
+    """Format the current CLI config into a readable summary."""
     if 'cli_provider' not in role:
         return 'none'
 
@@ -121,7 +122,11 @@ def update_single_agent(
     model: Optional[str] = None,
     parameters: Optional[Dict] = None
 ) -> bool:
-    """Update CLI config for a single agent in a family."""
+    """
+    Update CLI config for a single agent in a family.
+
+    Clears model/parameters when they are not specified.
+    """
 
     if not family_path.exists():
         print(f"[ERROR] Family config not found: {family_path}")
@@ -173,7 +178,7 @@ def update_family(
     """
     Update CLI config for ALL agents in a family (non-interactive).
 
-    Sets all roles to the same provider/model/parameters.
+    Sets all roles to the same provider/model/parameters and clears old config.
     """
 
     if not family_path.exists():
@@ -287,9 +292,12 @@ def configure_role_interactive(role_id: str, current_config: dict) -> Optional[d
 
 
 def configure_provider_manually() -> dict:
-    """Manually configure CLI provider (interactive)."""
+    """
+    Manually configure CLI provider (interactive).
 
-    # Select provider
+    Collects provider, optional model, and optional parameters.
+    """
+
     print("\nAvailable Providers:")
     print("  [1] codex (default)")
     print("  [2] claude")
@@ -350,7 +358,11 @@ def configure_provider_manually() -> dict:
 
 
 def interactive_mode():
-    """Fully interactive CLI provider configuration."""
+    """
+    Fully interactive CLI provider configuration.
+
+    Prompts for a family and configures each role sequentially.
+    """
     print("\n=== Interactive CLI Provider Configuration ===\n")
 
     # List available families
@@ -440,6 +452,7 @@ def interactive_mode():
 
 
 def main():
+    """Entry point for CLI provider configuration."""
     parser = argparse.ArgumentParser(
         description='Add CLI provider configuration to agent families or agents',
         epilog="""

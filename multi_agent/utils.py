@@ -1,3 +1,5 @@
+"""Shared utility helpers for formatting, parsing, and IO."""
+
 from __future__ import annotations
 
 import math
@@ -10,15 +12,18 @@ from typing import Dict, Iterable, List, Tuple
 
 
 def now_stamp() -> str:
+    """Return a compact timestamp string."""
     return datetime.now().strftime("%Y%m%d-%H%M%S")
 
 
 def write_text(path: Path, content: str) -> None:
+    """Write text to a file, creating parent directories."""
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")
 
 
 def read_text_safe(path: Path, limit_bytes: int) -> str:
+    """Read up to limit_bytes from a file, decoding as UTF-8."""
     if not path.exists() or not path.is_file():
         return ""
     data = path.read_bytes()
@@ -28,10 +33,12 @@ def read_text_safe(path: Path, limit_bytes: int) -> str:
 
 
 def parse_cmd(raw_cmd: str) -> List[str]:
+    """Split a raw command string into argv."""
     return shlex.split(raw_cmd, posix=(os.name != "nt"))
 
 
 def estimate_tokens(text: str, token_chars: int = 4) -> int:
+    """Estimate token count from character length."""
     if not text:
         return 0
     token_chars = max(1, int(token_chars))
@@ -39,6 +46,7 @@ def estimate_tokens(text: str, token_chars: int = 4) -> int:
 
 
 def detect_model_from_cmd(cmd: List[str]) -> str:
+    """Extract a model name from a CLI command list."""
     for idx, part in enumerate(cmd):
         if part in ("--model", "-m"):
             if idx + 1 < len(cmd):
@@ -49,15 +57,17 @@ def detect_model_from_cmd(cmd: List[str]) -> str:
 
 
 def summarize_text(text: str, max_chars: int = 1200) -> str:
+    """Summarize by keeping head and tail within max_chars."""
     text = (text or "").strip()
     if len(text) <= max_chars:
         return text
     head = text[: max_chars // 2].rstrip()
-    tail = text[- max_chars // 2 :].lstrip()
+    tail = text[- max_chars // 2:].lstrip()
     return head + "\n...\n" + tail
 
 
 def truncate_text(text: str, max_chars: int) -> str:
+    """Truncate text to max_chars with ellipsis."""
     text = (text or "")
     if max_chars < 1:
         return ""
@@ -67,6 +77,7 @@ def truncate_text(text: str, max_chars: int) -> str:
 
 
 def format_prompt(template: str, context: Dict[str, str], role_id: str, messages: Dict[str, str]) -> str:
+    """Format a prompt template and raise on missing keys."""
     try:
         return template.format(**context)
     except KeyError as exc:
@@ -75,6 +86,7 @@ def format_prompt(template: str, context: Dict[str, str], role_id: str, messages
 
 
 def get_status_text(returncode: int, stdout: str, messages: Dict[str, str]) -> str:
+    """Return a status label based on return code and output."""
     if returncode != 0:
         return messages["status_error"]
     if not (stdout or "").strip():
@@ -83,6 +95,7 @@ def get_status_text(returncode: int, stdout: str, messages: Dict[str, str]) -> s
 
 
 def extract_error_reason(stdout: str, stderr: str, max_chars: int = 200) -> str:
+    """Extract a concise error reason from stdout/stderr."""
     raw = (stderr or "").strip() or (stdout or "").strip()
     if not raw:
         return "Keine Fehlerausgabe."
@@ -91,6 +104,7 @@ def extract_error_reason(stdout: str, stderr: str, max_chars: int = 200) -> str:
 
 
 def normalize_output_text(text: str) -> str:
+    """Normalize output by trimming and collapsing blank lines."""
     lines = [(line.rstrip()) for line in (text or "").splitlines()]
     normalized: List[str] = []
     blank = False
@@ -116,6 +130,7 @@ def normalize_output_text(text: str) -> str:
 
 
 def validate_output_sections(text: str, expected_sections: Iterable[str]) -> Tuple[bool, List[str]]:
+    """Check whether expected section markers exist in text."""
     missing: List[str] = []
     for section in expected_sections:
         if section and section not in text:
@@ -129,6 +144,7 @@ def select_relevant_files(
     min_files: int,
     max_files: int,
 ) -> List[Path]:
+    """Select files whose paths match task tokens."""
     tokens = [t for t in re.split(r"[^A-Za-z0-9_./-]+", task or "") if len(t) >= 3]
     lowered = [t.lower() for t in tokens]
     if not lowered:

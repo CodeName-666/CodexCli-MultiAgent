@@ -23,7 +23,7 @@ def create_shard_plan(
         task_text: The full task text to shard
 
     Returns:
-        ShardPlan if sharding is enabled, None if shard_mode is "none"
+        ShardPlan if sharding is enabled and instances > 1, otherwise None.
     """
     if role_cfg.shard_mode == "none":
         return None
@@ -64,10 +64,10 @@ def _plan_shards_by_headings(
     Plan shards based on markdown headings (H1/H2/H3).
 
     Strategy:
-    1. Extract headings from the task text
-    2. Each heading defines a section
-    3. Distribute sections across shards using greedy-by-size algorithm
-    4. Extract allowed_paths from each section if possible
+    1. Extract H1 headings as section boundaries.
+    2. Treat each heading as a section and preserve the preamble.
+    3. Distribute sections across shards using a greedy-by-size algorithm.
+    4. Extract goal and allowed_paths from each section when present.
 
     Args:
         task_text: The markdown task text
@@ -132,22 +132,15 @@ def _plan_shards_by_headings(
                 )
             )
         return shards
-    else:
-        # More sections than shards, group them using greedy algorithm
-        return _group_sections_greedy(sections, shard_count, preamble)
+    return _group_sections_greedy(sections, shard_count, preamble)
 
 
 def _extract_section_metadata(section_text: str) -> tuple[str, List[str]]:
     """
     Extract goal and allowed_paths from a markdown section.
 
-    Looks for patterns like:
-    ## Goal
-    Add new RoleConfig fields...
-
-    ## Allowed paths
-    - multi_agent/models.py
-    - multi_agent/config_loader.py
+    Looks for sections like "Goal" and "Allowed paths" and captures
+    the first goal line plus list items under allowed paths.
 
     Returns:
         Tuple of (goal_text, allowed_paths_list)
@@ -200,7 +193,9 @@ def _group_sections_greedy(
     """
     Group sections into shards using greedy-by-size algorithm.
 
-    Distributes sections across shards trying to balance size (line count).
+    Distributes sections across shards trying to balance size (line count),
+    deduplicates allowed_paths, prepends the preamble to the first shard, and
+    limits shard titles to the first three headings.
 
     Args:
         sections: List of (heading, content, goal, allowed_paths) tuples
@@ -276,10 +271,10 @@ def _plan_shards_by_files(
     Plan shards based on file paths mentioned in the task text.
 
     Strategy:
-    1. Extract file paths from task text using heuristics
-    2. Group files by top-level directory
-    3. Create shards per directory group
-    4. If no paths found, fallback to heading-based sharding
+    1. Extract file paths from task text using heuristics.
+    2. Group files by top-level directory.
+    3. Create shards per directory group.
+    4. If no paths found, fallback to heading-based sharding.
 
     Args:
         task_text: The task text
@@ -338,11 +333,8 @@ def _extract_paths_from_text(text: str) -> List[str]:
     """
     Extract file paths from text using heuristics.
 
-    Looks for:
-    - Tokens containing '/' (e.g., multi_agent/models.py)
-    - Tokens ending in common extensions (.py, .json, .md, .txt, etc.)
-    - Markdown code blocks with file paths
-    - Markdown links to files
+    Looks for tokens containing slashes, common file extensions, code blocks,
+    and markdown links, then deduplicates and normalizes results.
 
     Args:
         text: The text to extract paths from

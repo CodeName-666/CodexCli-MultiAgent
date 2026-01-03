@@ -1,3 +1,5 @@
+"""Streaming helpers for real-time CLI output."""
+
 from __future__ import annotations
 
 import asyncio
@@ -11,15 +13,18 @@ from .utils import estimate_tokens
 
 @dataclass(frozen=True)
 class StreamChunk:
+    """Chunk of streamed output with source label."""
     source: str
     text: str
 
 
 class StreamTimeout(RuntimeError):
+    """Raised when streaming exceeds the timeout."""
     pass
 
 
 class StreamCancelled(RuntimeError):
+    """Raised when streaming is cancelled by the user."""
     pass
 
 
@@ -28,6 +33,7 @@ TokenCounter = Callable[[str], int]
 
 
 def build_token_counter(mode: str, token_chars: int, model: str | None = None) -> TokenCounter:
+    """Build a token counting function based on mode and model."""
     mode = (mode or "heuristic").strip().lower()
     if mode in {"tiktoken", "auto"}:
         try:
@@ -54,6 +60,7 @@ class StreamingClient:
         encoding: str = "utf-8",
         errors: str = "replace",
     ) -> None:
+        """Initialize streaming client and counters."""
         self.progress_callback = progress_callback
         self.token_counter = token_counter or (lambda text: estimate_tokens(text, token_chars))
         self.cancel_event = cancel_event
@@ -70,6 +77,7 @@ class StreamingClient:
         timeout: int | None = None,
         workdir: Path | None = None,
     ) -> AsyncIterator[StreamChunk]:
+        """Run a command and yield stdout/stderr chunks in real time."""
         self.start_time = time.monotonic()
         self.token_count = 0
         self.returncode = None

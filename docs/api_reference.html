@@ -1,0 +1,494 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>MultiAgent API Reference</title><style>body{font-family:Georgia,"Times New Roman",serif;margin:24px;background:#f6f1ea;color:#2b2620}h1{margin:0 0 8px 0}h2{margin-top:24px;border-bottom:2px solid #b8a59b}h3{margin-top:16px}ul{padding-left:20px}.empty{color:#6f6258;font-style:italic}</style></head><body><h1>MultiAgent API Reference</h1><p>Generated 2026-01-03 16:46:54Z.</p><h2>Table of Contents</h2><ul><li><a href="#module-creators-__init__-py">creators/__init__.py</a></li>
+<li><a href="#module-creators-add_cli_providers-py">creators/add_cli_providers.py</a></li>
+<li><a href="#module-creators-codex_client-py">creators/codex_client.py</a></li>
+<li><a href="#module-creators-multi_family_creator-py">creators/multi_family_creator.py</a></li>
+<li><a href="#module-creators-multi_role_agent_creator-py">creators/multi_role_agent_creator.py</a></li>
+<li><a href="#module-evaluation-run_evaluation-py">evaluation/run_evaluation.py</a></li>
+<li><a href="#module-migrate_configs-py">migrate_configs.py</a></li>
+<li><a href="#module-multi_agent-__init__-py">multi_agent/__init__.py</a></li>
+<li><a href="#module-multi_agent-cancellation-py">multi_agent/cancellation.py</a></li>
+<li><a href="#module-multi_agent-cli-py">multi_agent/cli.py</a></li>
+<li><a href="#module-multi_agent-cli_adapter-py">multi_agent/cli_adapter.py</a></li>
+<li><a href="#module-multi_agent-cli_errors-py">multi_agent/cli_errors.py</a></li>
+<li><a href="#module-multi_agent-commands-py">multi_agent/commands.py</a></li>
+<li><a href="#module-multi_agent-common_utils-py">multi_agent/common_utils.py</a></li>
+<li><a href="#module-multi_agent-config_loader-py">multi_agent/config_loader.py</a></li>
+<li><a href="#module-multi_agent-constants-py">multi_agent/constants.py</a></li>
+<li><a href="#module-multi_agent-coordination-py">multi_agent/coordination.py</a></li>
+<li><a href="#module-multi_agent-diff_applier-py">multi_agent/diff_applier.py</a></li>
+<li><a href="#module-multi_agent-diff_utils-py">multi_agent/diff_utils.py</a></li>
+<li><a href="#module-multi_agent-executor-py">multi_agent/executor.py</a></li>
+<li><a href="#module-multi_agent-format_converter-py">multi_agent/format_converter.py</a></li>
+<li><a href="#module-multi_agent-interactive-py">multi_agent/interactive.py</a></li>
+<li><a href="#module-multi_agent-models-py">multi_agent/models.py</a></li>
+<li><a href="#module-multi_agent-pipeline-py">multi_agent/pipeline.py</a></li>
+<li><a href="#module-multi_agent-progress-py">multi_agent/progress.py</a></li>
+<li><a href="#module-multi_agent-progress_display-py">multi_agent/progress_display.py</a></li>
+<li><a href="#module-multi_agent-run_helpers-py">multi_agent/run_helpers.py</a></li>
+<li><a href="#module-multi_agent-run_logger-py">multi_agent/run_logger.py</a></li>
+<li><a href="#module-multi_agent-schema_validator-py">multi_agent/schema_validator.py</a></li>
+<li><a href="#module-multi_agent-sharding-py">multi_agent/sharding.py</a></li>
+<li><a href="#module-multi_agent-snapshot-py">multi_agent/snapshot.py</a></li>
+<li><a href="#module-multi_agent-streaming-py">multi_agent/streaming.py</a></li>
+<li><a href="#module-multi_agent-task_split-py">multi_agent/task_split.py</a></li>
+<li><a href="#module-multi_agent-utils-py">multi_agent/utils.py</a></li>
+<li><a href="#module-multi_agent_codex-py">multi_agent_codex.py</a></li></ul><section id="module-creators-__init__-py">
+<h2>creators/__init__.py</h2>
+<p><span>Creator package for multi-agent family and role generation.</span></p>
+</section>
+<section id="module-creators-add_cli_providers-py">
+<h2>creators/add_cli_providers.py</h2>
+<p><span>CLI Provider Configuration Tool</span></p>
+<h3>Functions</h3>
+<ul>
+<li><strong>detect_role_type</strong>: <span>Detect role type from role ID for optional recommendations.</span></li>
+<li><strong>get_recommendation_for_role</strong>: <span>Return an optional CLI recommendation for the given role ID.</span></li>
+<li><strong>format_cli_config</strong>: <span>Format the current CLI config into a readable summary.</span></li>
+<li><strong>update_single_agent</strong>: <span>Update CLI config for a single agent in a family.</span></li>
+<li><strong>update_family</strong>: <span>Update CLI config for ALL agents in a family (non-interactive).</span></li>
+<li><strong>configure_role_interactive</strong>: <span>Interactively configure CLI provider for a single role.</span></li>
+<li><strong>configure_provider_manually</strong>: <span>Manually configure CLI provider (interactive).</span></li>
+<li><strong>interactive_mode</strong>: <span>Fully interactive CLI provider configuration.</span></li>
+<li><strong>main</strong>: <span>Entry point for CLI provider configuration.</span></li>
+</ul>
+</section>
+<section id="module-creators-codex_client-py">
+<h2>creators/codex_client.py</h2>
+<p><span>Codex CLI client utilities for creator tools.</span></p>
+<h3>Functions</h3>
+<ul>
+<li><strong>call_codex</strong>: <span>Call Codex CLI and return stdout.</span></li>
+<li><strong>extract_payload_from_markdown</strong>: <span>Extract a payload from Markdown code blocks if present.</span></li>
+<li><strong>extract_json_from_markdown</strong>: <span>Extract JSON from Markdown code blocks if present.</span></li>
+</ul>
+</section>
+<section id="module-creators-multi_family_creator-py">
+<h2>creators/multi_family_creator.py</h2>
+<p><span>multi_family_creator.py - Create complete agent families from natural language descript...</span></p>
+<h3>Classes</h3>
+<ul>
+<li><strong>FamilyValidationError</strong>: <span>Custom exception for family validation errors.</span></li>
+<li><strong>FamilyCreator</strong>: <span>Main class for family creation.</span></li>
+</ul>
+<h3>Functions</h3>
+<ul>
+<li><strong>detect_role_type</strong>: <span>Detect role type from role ID (for recommendations only).</span></li>
+<li><strong>get_recommendation_for_role</strong>: <span>Get recommended CLI configuration for a role (optional).</span></li>
+<li><strong>configure_provider_manually</strong>: <span>Manually configure CLI provider (interactive).</span></li>
+<li><strong>parse_args</strong>: <span>Parse command-line arguments.</span></li>
+<li><strong>build_family_spec_prompt</strong>: <span>Generate prompt for Codex to create family specification.</span></li>
+<li><strong>build_prompt_template_generator_prompt</strong>: <span>Generate prompt for Codex to create optimal prompt template for a role.</span></li>
+<li><strong>_has_cycle</strong>: <span>Depth-first cycle detection in a dependency graph.</span></li>
+<li><strong>validate_dependencies</strong>: <span>Validate dependency graph (no cycles, all deps exist).</span></li>
+<li><strong>_family_spec_template</strong>: <span>Return a skeleton family spec payload for prompts.</span></li>
+<li><strong>main</strong>: <span>Main entry point.</span></li>
+</ul>
+</section>
+<section id="module-creators-multi_role_agent_creator-py">
+<h2>creators/multi_role_agent_creator.py</h2>
+<p><span>multi_role_agent_creator.py - create role JSON and register it in a main config.</span></p>
+<h3>Functions</h3>
+<ul>
+<li><strong>load_config_with_defaults</strong>: <span>Load config with defaults.json merge support.</span></li>
+<li><strong>resolve_output_format</strong>: <span>Resolve output format from formatting configuration.</span></li>
+<li><strong>_role_spec_template</strong>: <span>Return a role spec template skeleton for the given language.</span></li>
+<li><strong>resolve_role_path</strong>: <span>Resolve role file path to absolute and relative paths.</span></li>
+<li><strong>insert_role_entry</strong>: <span>Insert role entry into roles list at appropriate position.</span></li>
+<li><strong>build_prompt_template</strong>: <span>Build prompt template from role specification.</span></li>
+<li><strong>build_role_spec_prompt</strong>: <span>Generate prompt for Codex to create role specification from natural language.</span></li>
+<li><strong>generate_role_spec_via_codex</strong>: <span>Generate role specification via Codex from natural language description.</span></li>
+<li><strong>parse_args</strong>: <span>Parse command-line arguments for Natural Language role creation.</span></li>
+<li><strong>main_natural_language</strong>: <span>Natural Language mode - generate spec, materialize role JSON, and update config.</span></li>
+<li><strong>main</strong>: <span>Main entry point with mode detection.</span></li>
+</ul>
+</section>
+<section id="module-evaluation-run_evaluation-py">
+<h2>evaluation/run_evaluation.py</h2>
+<p><span>Evaluation Runner f&#252;r Multi-Agent vs. CLI Vergleich</span></p>
+<h3>Classes</h3>
+<ul>
+<li><strong>EvaluationRunner</strong>: <span>Manages evaluation runs and result tracking.</span></li>
+</ul>
+<h3>Functions</h3>
+<ul>
+<li><strong>interactive_mode</strong>: <span>Interactive evaluation session.</span></li>
+<li><strong>main</strong>: <span>CLI entry point for evaluation runner.</span></li>
+</ul>
+</section>
+<section id="module-migrate_configs-py">
+<h2>migrate_configs.py</h2>
+<p><span>migrate_configs.py - Migrate *_main.json files to use defaults.json.</span></p>
+<h3>Functions</h3>
+<ul>
+<li><strong>extract_family_config</strong>: <span>Extract only family-specific configuration keys.</span></li>
+<li><strong>validate_migration</strong>: <span>Validate that defaults + family merges back to the original config.</span></li>
+<li><strong>migrate_file</strong>: <span>Migrate a single *_main.json file.</span></li>
+<li><strong>main</strong>: <span>Run migration across a config directory with optional dry-run.</span></li>
+</ul>
+</section>
+<section id="module-multi_agent-__init__-py">
+<h2>multi_agent/__init__.py</h2>
+<p><span>Multi-Agent Codex package.</span></p>
+</section>
+<section id="module-multi_agent-cancellation-py">
+<h2>multi_agent/cancellation.py</h2>
+<p><span>Signal-based cancellation handling for CLI runs.</span></p>
+<h3>Classes</h3>
+<ul>
+<li><strong>CancellationHandler</strong>: <span>Graceful cancellation on Ctrl+C.</span></li>
+</ul>
+</section>
+<section id="module-multi_agent-cli-py">
+<h2>multi_agent/cli.py</h2>
+<p><span>Top-level CLI entrypoint and help output.</span></p>
+<h3>Functions</h3>
+<ul>
+<li><strong>print_main_help</strong>: <span>Print the top-level CLI usage and examples.</span></li>
+<li><strong>main</strong>: <span>Dispatch CLI commands and exit with the resulting status code.</span></li>
+</ul>
+</section>
+<section id="module-multi_agent-cli_adapter-py">
+<h2>multi_agent/cli_adapter.py</h2>
+<p><span>CLI adapter system for multi-provider support.</span></p>
+<h3>Classes</h3>
+<ul>
+<li><strong>CLIProvider</strong>: <span>Represents a single CLI provider configuration.</span></li>
+<li><strong>CLIAdapter</strong>: <span>Manages multiple CLI providers and routes commands to the appropriate provider.</span></li>
+</ul>
+</section>
+<section id="module-multi_agent-cli_errors-py">
+<h2>multi_agent/cli_errors.py</h2>
+<p><span>Shared helpers for formatting and printing CLI errors.</span></p>
+<h3>Functions</h3>
+<ul>
+<li><strong>format_error</strong>: <span>Normalize an error message with a consistent prefix.</span></li>
+<li><strong>print_error</strong>: <span>Print a formatted error message to stderr.</span></li>
+</ul>
+</section>
+<section id="module-multi_agent-commands-py">
+<h2>multi_agent/commands.py</h2>
+<p><span>CLI command definitions and dispatch helpers.</span></p>
+<h3>Classes</h3>
+<ul>
+<li><strong>Command</strong>: <span>Base class for CLI subcommands.</span></li>
+<li><strong>CommandDispatcher</strong>: <span>Dispatches CLI arguments to registered subcommands.</span></li>
+<li><strong>TaskCommand</strong>: <span>Run a task using a provided or configured prompt.</span></li>
+<li><strong>RunCommand</strong>: <span>Run the interactive CLI flow.</span></li>
+<li><strong>CreateFamilyCommand</strong>: <span>Create a new agent family via the creator module.</span></li>
+<li><strong>CreateRoleCommand</strong>: <span>Create a new agent role via the creator module.</span></li>
+</ul>
+<h3>Functions</h3>
+<ul>
+<li><strong>_parse_config_path</strong>: <span>Extract the config path from argv without consuming other args.</span></li>
+<li><strong>parse_args_task</strong>: <span>Parse arguments for the task subcommand (original functionality).</span></li>
+<li><strong>build_dispatcher</strong>: <span>Construct the default command dispatcher.</span></li>
+</ul>
+</section>
+<section id="module-multi_agent-common_utils-py">
+<h2>multi_agent/common_utils.py</h2>
+<p><span>Common utility functions used across the codebase.</span></p>
+<h3>Functions</h3>
+<ul>
+<li><strong>load_json</strong>: <span>Load JSON file and return as dictionary.</span></li>
+<li><strong>write_json</strong>: <span>Write dictionary to JSON file.</span></li>
+<li><strong>deep_merge</strong>: <span>Deep merge two dictionaries, override wins conflicts.</span></li>
+<li><strong>slugify</strong>: <span>Convert text to slug format (lowercase, alphanumeric with underscores).</span></li>
+</ul>
+</section>
+<section id="module-multi_agent-config_loader-py">
+<h2>multi_agent/config_loader.py</h2>
+<p><span>Load and normalize application configuration from JSON files.</span></p>
+<h3>Functions</h3>
+<ul>
+<li><strong>_coerce_str_list</strong>: <span>Coerce a value into a list of strings.</span></li>
+<li><strong>_normalize_prompt_template</strong>: <span>Normalize prompt_template to a single string.</span></li>
+<li><strong>_append_rule</strong>: <span>Append a rule to system_rules if it is not already present.</span></li>
+<li><strong>_apply_formatting_rules</strong>: <span>Apply formatting-related rules to the system rules string.</span></li>
+<li><strong>load_role_config</strong>: <span>Load a role config entry and resolve defaults and prompt templates.</span></li>
+<li><strong>load_app_config</strong>: <span>Load application config with defaults.json merge support.</span></li>
+</ul>
+</section>
+<section id="module-multi_agent-constants-py">
+<h2>multi_agent/constants.py</h2>
+<p><span>Central constants and configuration paths for the multi-agent system.</span></p>
+<h3>Classes</h3>
+<ul>
+<li><strong>ExitCode</strong>: <span>Standard exit codes for the application.</span></li>
+</ul>
+<h3>Functions</h3>
+<ul>
+<li><strong>get_project_root</strong>: <span>Get the project root directory.</span></li>
+<li><strong>get_static_config_dir</strong>: <span>Get the static configuration directory.</span></li>
+<li><strong>get_agent_families_dir</strong>: <span>Get the agent families directory.</span></li>
+<li><strong>get_defaults_path</strong>: <span>Get the path to defaults.json.</span></li>
+<li><strong>get_cli_config_path</strong>: <span>Get the path to cli_config.json.</span></li>
+</ul>
+</section>
+<section id="module-multi_agent-coordination-py">
+<h2>multi_agent/coordination.py</h2>
+<p><span>Task coordination primitives for multi-agent runs.</span></p>
+<h3>Classes</h3>
+<ul>
+<li><strong>CoordinationConfig</strong>: <span>Configuration for coordination logging and task board locks.</span></li>
+<li><strong>CoordinationLog</strong>: <span>Append-only coordination log writer.</span></li>
+<li><strong>TaskBoard</strong>: <span>Persisted task board with optional file locking.</span></li>
+</ul>
+<h3>Functions</h3>
+<ul>
+<li><strong>_utc_now</strong>: <span>Return current UTC timestamp in ISO 8601 with Z suffix.</span></li>
+</ul>
+</section>
+<section id="module-multi_agent-diff_applier-py">
+<h2>multi_agent/diff_applier.py</h2>
+<p><span>Apply unified diffs to files with safety checks and optional git fallback.</span></p>
+<h3>Classes</h3>
+<ul>
+<li><strong>BaseDiffApplier</strong>: <span>Abstract interface for diff extraction and application.</span></li>
+<li><strong>UnifiedDiffApplier</strong>: <span>Conservative unified-diff applier with optional git fallback.</span></li>
+</ul>
+</section>
+<section id="module-multi_agent-diff_utils-py">
+<h2>multi_agent/diff_utils.py</h2>
+<p><span>Utilities for parsing and analyzing unified diffs and path constraints.</span></p>
+<h3>Functions</h3>
+<ul>
+<li><strong>extract_touched_files_from_unified_diff</strong>: <span>Extract the set of file paths that are modified in a unified diff.</span></li>
+<li><strong>check_path_matches_globs</strong>: <span>Check if a file path matches any of the given glob patterns.</span></li>
+<li><strong>validate_touched_files_against_allowed_paths</strong>: <span>Validate that all touched files are within allowed paths.</span></li>
+<li><strong>detect_file_overlaps</strong>: <span>Detect which files are modified by multiple instances (overlaps).</span></li>
+</ul>
+</section>
+<section id="module-multi_agent-executor-py">
+<h2>multi_agent/executor.py</h2>
+<p><span>CLI Executor Module</span></p>
+<h3>Classes</h3>
+<ul>
+<li><strong>ProgressDisplay</strong>: <span>Interface for progress display updates during streaming.</span></li>
+<li><strong>StreamingContext</strong>: <span>Runtime options for streaming execution and progress updates.</span></li>
+<li><strong>CLIClient</strong>: <span>Generic CLI client that supports multiple providers (Codex, Claude, Gemini).</span></li>
+<li><strong>AgentExecutor</strong>: <span>Execute agents via a CLI client and persist outputs.</span></li>
+</ul>
+</section>
+<section id="module-multi_agent-format_converter-py">
+<h2>multi_agent/format_converter.py</h2>
+<p><span>Helpers to convert between JSON and TOON payload formats.</span></p>
+<h3>Classes</h3>
+<ul>
+<li><strong>FormatConversionError</strong>: <span>Raised when a format conversion cannot be performed.</span></li>
+<li><strong>FormatHandler</strong>: <span>Protocol for format handlers that can decode and encode data.</span></li>
+<li><strong>JsonFormatHandler</strong>: <span>Handler for JSON serialization and deserialization.</span></li>
+<li><strong>ToonFormatHandler</strong>: <span>Handler for TOON serialization using the optional toon-format package.</span></li>
+<li><strong>FormatConverter</strong>: <span>Registry and dispatcher for format conversion handlers.</span></li>
+</ul>
+<h3>Functions</h3>
+<ul>
+<li><strong>build_default_converter</strong>: <span>Build a converter with JSON and TOON handlers configured.</span></li>
+<li><strong>extract_payload_from_markdown</strong>: <span>Extract a JSON or TOON payload block from Markdown text.</span></li>
+</ul>
+</section>
+<section id="module-multi_agent-interactive-py">
+<h2>multi_agent/interactive.py</h2>
+<p><span>Interactive CLI flows for configuring and running tasks.</span></p>
+<h3>Functions</h3>
+<ul>
+<li><strong>parse_args_run</strong>: <span>Parse arguments for the run subcommand (interactive/CLI hybrid).</span></li>
+<li><strong>_select_family_interactive</strong>: <span>Interactively select a family from available options.</span></li>
+<li><strong>_get_family_from_args</strong>: <span>Get family path from CLI argument.</span></li>
+<li><strong>_get_task_interactive</strong>: <span>Get task description from interactive input.</span></li>
+<li><strong>_get_options_interactive</strong>: <span>Get runtime options from interactive input.</span></li>
+<li><strong>_print_run_summary</strong>: <span>Print summary of the run configuration.</span></li>
+<li><strong>interactive_run</strong>: <span>Interactive/CLI hybrid mode.</span></li>
+</ul>
+</section>
+<section id="module-multi_agent-models-py">
+<h2>multi_agent/models.py</h2>
+<p><span>Dataclasses and mapping wrappers for multi-agent configuration and results.</span></p>
+<h3>Classes</h3>
+<ul>
+<li><strong>MappingConfig</strong>: <span>Mapping wrapper used by config sections.</span></li>
+<li><strong>PathsConfig</strong>: <span>Filesystem path settings for runs and snapshots.</span></li>
+<li><strong>OutputsConfig</strong>: <span>Output filename pattern settings.</span></li>
+<li><strong>SnapshotConfig</strong>: <span>Snapshot formatting and filtering configuration.</span></li>
+<li><strong>AgentOutputConfig</strong>: <span>Formatting for per-agent output files.</span></li>
+<li><strong>CliConfig</strong>: <span>CLI metadata and arguments.</span></li>
+<li><strong>MessageCatalog</strong>: <span>Localized message catalog.</span></li>
+<li><strong>DiffMessageCatalog</strong>: <span>Diff-related message catalog.</span></li>
+<li><strong>RoleDefaultsConfig</strong>: <span>Defaults applied to role configs.</span></li>
+<li><strong>PromptLimitsConfig</strong>: <span>Prompt limits configuration.</span></li>
+<li><strong>TaskLimitsConfig</strong>: <span>Task input sizing and truncation settings.</span></li>
+<li><strong>TaskSplitConfig</strong>: <span>Task splitting configuration.</span></li>
+<li><strong>StreamingConfig</strong>: <span>Streaming display settings.</span></li>
+<li><strong>DiffSafetyConfig</strong>: <span>Diff safety guardrails.</span></li>
+<li><strong>DiffApplyConfig</strong>: <span>Diff apply behavior settings.</span></li>
+<li><strong>LoggingConfig</strong>: <span>Structured logging configuration.</span></li>
+<li><strong>FeedbackLoopConfig</strong>: <span>Feedback loop settings for review gating.</span></li>
+<li><strong>FormattingConfig</strong>: <span>Formatting and TOON conversion settings.</span></li>
+<li><strong>CliProvidersConfig</strong>: <span>CLI provider configuration map.</span></li>
+<li><strong>RoleConfig</strong>: <span>Role definition used during pipeline execution.</span></li>
+<li><strong>AppConfig</strong>: <span>Main application configuration.</span></li>
+<li><strong>AgentSpec</strong>: <span>Agent identity used for execution and logging.</span></li>
+<li><strong>AgentResult</strong>: <span>Execution result for a single agent instance.</span></li>
+<li><strong>Shard</strong>: <span>Shard specification for sharding tasks.</span></li>
+<li><strong>ShardPlan</strong>: <span>Plan containing shard metadata for a role.</span></li>
+</ul>
+</section>
+<section id="module-multi_agent-pipeline-py">
+<h2>multi_agent/pipeline.py</h2>
+<p><span>Pipeline orchestration for multi-agent runs.</span></p>
+<h3>Classes</h3>
+<ul>
+<li><strong>PipelineRunContext</strong>: <span>Runtime context shared across pipeline execution steps.</span></li>
+<li><strong>Pipeline</strong>: <span>Coordinate the end-to-end multi-agent run lifecycle.</span></li>
+</ul>
+<h3>Functions</h3>
+<ul>
+<li><strong>build_pipeline</strong>: <span>Build a Pipeline with default snapshot and diff handlers.</span></li>
+</ul>
+</section>
+<section id="module-multi_agent-progress-py">
+<h2>multi_agent/progress.py</h2>
+<p><span>Progress reporting helpers for CLI runs.</span></p>
+<h3>Classes</h3>
+<ul>
+<li><strong>ProgressState</strong>: <span>Mutable progress state for a running pipeline.</span></li>
+<li><strong>ProgressReporter</strong>: <span>Emit progress updates to stdout with optional TTY bar.</span></li>
+</ul>
+</section>
+<section id="module-multi_agent-progress_display-py">
+<h2>multi_agent/progress_display.py</h2>
+<p><span>Optional rich progress display for streaming agent output.</span></p>
+<h3>Classes</h3>
+<ul>
+<li><strong>AgentProgressDisplay</strong>: <span>Progress display for agent execution (rich when available).</span></li>
+</ul>
+</section>
+<section id="module-multi_agent-run_helpers-py">
+<h2>multi_agent/run_helpers.py</h2>
+<p><span>Helpers to run the pipeline with optional task splitting.</span></p>
+<h3>Functions</h3>
+<ul>
+<li><strong>run_split</strong>: <span>Run the pipeline with task splitting and resume support.</span></li>
+<li><strong>run_pipeline</strong>: <span>Run the pipeline entrypoint with optional task splitting.</span></li>
+</ul>
+</section>
+<section id="module-multi_agent-run_logger-py">
+<h2>multi_agent/run_logger.py</h2>
+<p><span>Simple JSONL run logger for structured events.</span></p>
+<h3>Classes</h3>
+<ul>
+<li><strong>JsonRunLogger</strong>: <span>Append-only JSONL logger for run events.</span></li>
+</ul>
+</section>
+<section id="module-multi_agent-schema_validator-py">
+<h2>multi_agent/schema_validator.py</h2>
+<p><span>Schema validation utilities for main and role configuration files.</span></p>
+<h3>Functions</h3>
+<ul>
+<li><strong>_load_json</strong>: <span>Load JSON content from a file path.</span></li>
+<li><strong>_validate_required</strong>: <span>Return whether all required keys exist, with an error message if not.</span></li>
+<li><strong>_validate_prompt_template</strong>: <span>Validate prompt_template as a string or list of strings.</span></li>
+<li><strong>validate_config</strong>: <span>Validate a main config file and referenced role files.</span></li>
+<li><strong>_validate_sharding_config</strong>: <span>Validate sharding-related configuration fields.</span></li>
+</ul>
+</section>
+<section id="module-multi_agent-sharding-py">
+<h2>multi_agent/sharding.py</h2>
+<p><span>Shard planning for parallel agent execution.</span></p>
+<h3>Functions</h3>
+<ul>
+<li><strong>create_shard_plan</strong>: <span>Create a shard plan for a role based on its configuration.</span></li>
+<li><strong>_plan_shards_by_headings</strong>: <span>Plan shards based on markdown headings (H1/H2/H3).</span></li>
+<li><strong>_extract_section_metadata</strong>: <span>Extract goal and allowed_paths from a markdown section.</span></li>
+<li><strong>_group_sections_greedy</strong>: <span>Group sections into shards using greedy-by-size algorithm.</span></li>
+<li><strong>_plan_shards_by_files</strong>: <span>Plan shards based on file paths mentioned in the task text.</span></li>
+<li><strong>_extract_paths_from_text</strong>: <span>Extract file paths from text using heuristics.</span></li>
+<li><strong>save_shard_plan</strong>: <span>Save a shard plan to a JSON file.</span></li>
+</ul>
+</section>
+<section id="module-multi_agent-snapshot-py">
+<h2>multi_agent/snapshot.py</h2>
+<p><span>Workspace snapshot builders for context packaging.</span></p>
+<h3>Classes</h3>
+<ul>
+<li><strong>SnapshotResult</strong>: <span>Snapshot text and metadata for a workspace capture.</span></li>
+<li><strong>BaseSnapshotter</strong>: <span>Abstract snapshotter interface.</span></li>
+<li><strong>WorkspaceSnapshotter</strong>: <span>Snapshotter that captures files from a local workspace.</span></li>
+</ul>
+</section>
+<section id="module-multi_agent-streaming-py">
+<h2>multi_agent/streaming.py</h2>
+<p><span>Streaming helpers for real-time CLI output.</span></p>
+<h3>Classes</h3>
+<ul>
+<li><strong>StreamChunk</strong>: <span>Chunk of streamed output with source label.</span></li>
+<li><strong>StreamTimeout</strong>: <span>Raised when streaming exceeds the timeout.</span></li>
+<li><strong>StreamCancelled</strong>: <span>Raised when streaming is cancelled by the user.</span></li>
+<li><strong>StreamingClient</strong>: <span>Handles real-time output streaming from CLI providers.</span></li>
+</ul>
+<h3>Functions</h3>
+<ul>
+<li><strong>build_token_counter</strong>: <span>Build a token counting function based on mode and model.</span></li>
+</ul>
+</section>
+<section id="module-multi_agent-task_split-py">
+<h2>multi_agent/task_split.py</h2>
+<p><span>Task splitting utilities for large Markdown prompts.</span></p>
+<h3>Classes</h3>
+<ul>
+<li><strong>TaskChunk</strong>: <span>Chunk of task text with an index and title.</span></li>
+<li><strong>HeadingInfo</strong>: <span>Parsed heading metadata from Markdown.</span></li>
+</ul>
+<h3>Functions</h3>
+<ul>
+<li><strong>load_task_text</strong>: <span>Load task text from inline input or a file reference.</span></li>
+<li><strong>build_split_id</strong>: <span>Build a stable split id from task content.</span></li>
+<li><strong>needs_split</strong>: <span>Return True if heuristics indicate the task should be split.</span></li>
+<li><strong>split_task_markdown</strong>: <span>Split Markdown into chunks based on headings and size limits.</span></li>
+<li><strong>extract_headings</strong>: <span>Extract headings up to a max level from Markdown text.</span></li>
+<li><strong>plan_chunks_with_llm</strong>: <span>Use an LLM to propose chunk boundaries for headings.</span></li>
+<li><strong>build_chunks_from_plan</strong>: <span>Build task chunks from an LLM-provided plan.</span></li>
+<li><strong>build_chunk_payload</strong>: <span>Compose a chunk payload with optional carry-over context.</span></li>
+<li><strong>write_base_chunks</strong>: <span>Write base chunk files to the tasks directory.</span></li>
+<li><strong>init_manifest</strong>: <span>Create a task split manifest payload.</span></li>
+<li><strong>save_manifest</strong>: <span>Write a manifest JSON file to disk.</span></li>
+<li><strong>load_manifest</strong>: <span>Load a manifest JSON file from disk.</span></li>
+<li><strong>resolve_split_dirs</strong>: <span>Resolve output and task directories for a split run.</span></li>
+<li><strong>_split_by_heading_level</strong>: <span>Split text into chunks using headings up to a level.</span></li>
+<li><strong>_split_large_chunks</strong>: <span>Further split chunks that exceed the maximum size.</span></li>
+<li><strong>_split_chunk_to_size</strong>: <span>Split a single chunk by headings or paragraphs to fit size.</span></li>
+<li><strong>_split_by_heading_min_level</strong>: <span>Split text into chunks using headings at or below min level.</span></li>
+<li><strong>_extract_prefix</strong>: <span>Extract a prefix section before the first heading at min level.</span></li>
+<li><strong>_split_by_paragraphs</strong>: <span>Split a chunk into paragraph-sized chunks.</span></li>
+<li><strong>_merge_small_chunks</strong>: <span>Merge adjacent chunks until they meet a minimum size.</span></li>
+<li><strong>_join_titles</strong>: <span>Join parent and child titles with a separator.</span></li>
+<li><strong>_slugify</strong>: <span>Return a lowercase ASCII slug from input text.</span></li>
+<li><strong>_build_llm_prompt</strong>: <span>Build an LLM prompt for chunk planning.</span></li>
+<li><strong>_extract_plan_payload</strong>: <span>Extract a JSON or TOON plan payload from LLM output.</span></li>
+<li><strong>_validate_plan</strong>: <span>Validate plan entries and return normalized tuples.</span></li>
+</ul>
+</section>
+<section id="module-multi_agent-utils-py">
+<h2>multi_agent/utils.py</h2>
+<p><span>Shared utility helpers for formatting, parsing, and IO.</span></p>
+<h3>Functions</h3>
+<ul>
+<li><strong>now_stamp</strong>: <span>Return a compact timestamp string.</span></li>
+<li><strong>write_text</strong>: <span>Write text to a file, creating parent directories.</span></li>
+<li><strong>read_text_safe</strong>: <span>Read up to limit_bytes from a file, decoding as UTF-8.</span></li>
+<li><strong>parse_cmd</strong>: <span>Split a raw command string into argv.</span></li>
+<li><strong>estimate_tokens</strong>: <span>Estimate token count from character length.</span></li>
+<li><strong>detect_model_from_cmd</strong>: <span>Extract a model name from a CLI command list.</span></li>
+<li><strong>summarize_text</strong>: <span>Summarize by keeping head and tail within max_chars.</span></li>
+<li><strong>truncate_text</strong>: <span>Truncate text to max_chars with ellipsis.</span></li>
+<li><strong>format_prompt</strong>: <span>Format a prompt template and raise on missing keys.</span></li>
+<li><strong>get_status_text</strong>: <span>Return a status label based on return code and output.</span></li>
+<li><strong>extract_error_reason</strong>: <span>Extract a concise error reason from stdout/stderr.</span></li>
+<li><strong>normalize_output_text</strong>: <span>Normalize output by trimming and collapsing blank lines.</span></li>
+<li><strong>validate_output_sections</strong>: <span>Check whether expected section markers exist in text.</span></li>
+<li><strong>select_relevant_files</strong>: <span>Select files whose paths match task tokens.</span></li>
+</ul>
+</section>
+<section id="module-multi_agent_codex-py">
+<h2>multi_agent_codex.py</h2>
+<p><span>multi_agent_codex.py &#8212; Multi-Agent Orchestrator for Codex CLI</span></p>
+</section></body></html>
