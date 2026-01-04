@@ -1,0 +1,20 @@
+{
+  "role_defaults": {
+    "instances": 1,
+    "timeout_sec": 1800,
+    "shard_mode": "none",
+    "overlap_policy": "warn",
+    "enforce_allowed_paths": false
+  },
+  "roles": [
+    {
+      "id": "implementer",
+      "file": "../agent_families/developer_agents/implementer.json",
+      "instances": 3,
+      "shard_mode": "llm",
+      "cli_provider": "codex",
+      "apply_diff": true,
+      "depends_on": []
+    }
+  ]
+}

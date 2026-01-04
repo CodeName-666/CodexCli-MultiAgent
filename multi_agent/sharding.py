@@ -4,11 +4,230 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
 from pathlib import Path
 from typing import List
 
+from .cli_adapter import CLIAdapter
+from .constants import get_static_config_dir
 from .models import RoleConfig, Shard, ShardPlan
 from .task_split import extract_headings, HeadingInfo
+
+
+def _build_llm_sharding_prompt(task_text: str, shard_count: int) -> str:
+    """
+    Build a prompt for the LLM to split a task into parallel sub-tasks.
+
+    Args:
+        task_text: The full task text to split
+        shard_count: Number of shards to create
+
+    Returns:
+        Formatted prompt string
+    """
+    prompt = f"""You are a task planning assistant. Your job is to split a task into {shard_count} independent, parallel sub-tasks that can be executed simultaneously by different agents.
+
+TASK TO SPLIT:
+{task_text}
+
+REQUIREMENTS:
+1. Split the task into exactly {shard_count} sub-tasks
+2. Each sub-task should be independent and executable in parallel
+3. Sub-tasks should be logically separated (e.g., different features, components, or aspects)
+4. Each sub-task should have a clear goal and scope
+5. If the task mentions specific file paths or directories, assign them to appropriate sub-tasks
+6. If the task is too simple to split meaningfully, you may create fewer shards
+
+OUTPUT FORMAT (JSON):
+{{
+  "shards": [
+    {{
+      "title": "Brief title for this sub-task",
+      "goal": "Clear goal statement for this sub-task",
+      "content": "Detailed description of what needs to be done in this sub-task",
+      "allowed_paths": ["glob/pattern/**", "specific/file.py"] or ["**"] for all files
+    }}
+  ]
+}}
+
+Respond with ONLY the JSON object, no additional text."""
+    return prompt
+
+
+def _parse_llm_sharding_response(response: str) -> List[Shard] | None:
+    """
+    Parse LLM response and extract shard specifications.
+
+    Args:
+        response: Raw LLM output text
+
+    Returns:
+        List of Shard objects, or None if parsing fails
+    """
+    try:
+        # Try to extract JSON from response
+        response = response.strip()
+
+        # Handle markdown code blocks
+        if "```json" in response:
+            start = response.find("```json") + 7
+            end = response.find("```", start)
+            if end > start:
+                response = response[start:end].strip()
+        elif "```" in response:
+            start = response.find("```") + 3
+            end = response.find("```", start)
+            if end > start:
+                response = response[start:end].strip()
+
+        # Parse JSON
+        data = json.loads(response)
+
+        if not isinstance(data, dict) or "shards" not in data:
+            return None
+
+        shards_data = data["shards"]
+        if not isinstance(shards_data, list) or not shards_data:
+            return None
+
+        # Build Shard objects
+        shards = []
+        for i, shard_data in enumerate(shards_data, start=1):
+            if not isinstance(shard_data, dict):
+                continue
+
+            title = shard_data.get("title", f"Shard {i}")
+            goal = shard_data.get("goal", title)
+            content = shard_data.get("content", "")
+            allowed_paths = shard_data.get("allowed_paths", ["**"])
+
+            if not isinstance(allowed_paths, list):
+                allowed_paths = ["**"]
+
+            shards.append(
+                Shard(
+                    id=f"shard-{i}",
+                    title=str(title),
+                    goal=str(goal),
+                    content=str(content),
+                    allowed_paths=allowed_paths,
+                )
+            )
+
+        return shards if shards else None
+
+    except (json.JSONDecodeError, ValueError, KeyError):
+        return None
+
+
+def _plan_shards_by_llm(
+    task_text: str,
+    shard_count: int,
+    role_cfg: RoleConfig,
+) -> List[Shard]:
+    """
+    Plan shards using an LLM to intelligently split the task.
+
+    Strategy:
+    1. Use the role's shard_llm configuration if specified, otherwise use cli_provider
+    2. Build a prompt asking the LLM to split the task into N parallel sub-tasks
+    3. Parse the JSON response to create Shard objects
+    4. Fall back to single-shard on any errors
+
+    Args:
+        task_text: The task text to split
+        shard_count: Target number of shards
+        role_cfg: Role configuration
+
+    Returns:
+        List of Shard objects (may be single shard on error)
+    """
+    # Get LLM configuration
+    shard_llm = role_cfg.shard_llm or {}
+    shard_llm_options = role_cfg.shard_llm_options or {}
+
+    # Determine provider and model
+    provider_id = shard_llm.get("provider") if shard_llm else role_cfg.cli_provider
+    model = shard_llm.get("model") if shard_llm else role_cfg.model
+
+    # Get timeout configuration
+    timeout_sec = int(shard_llm_options.get("timeout_sec", 60))
+    max_retries = int(shard_llm_options.get("max_retries", 2))
+
+    # Build the prompt
+    prompt = _build_llm_sharding_prompt(task_text, shard_count)
+
+    # Get CLI adapter and build command
+    try:
+        cli_config_path = get_static_config_dir() / "cli_config.json"
+        cli_adapter = CLIAdapter(cli_config_path)
+        cmd, stdin_content, _ = cli_adapter.build_command_for_role(
+            provider_id=provider_id,
+            prompt=prompt,
+            model=model,
+            timeout_sec=timeout_sec,
+        )
+    except Exception:
+        # Fall back to single shard if CLI adapter fails
+        return _create_single_shard(task_text)
+
+    # Execute LLM call with retries
+    for attempt in range(max_retries + 1):
+        try:
+            proc = subprocess.run(
+                cmd,
+                input=stdin_content or prompt,
+                text=True,
+                capture_output=True,
+                timeout=timeout_sec,
+            )
+
+            if proc.returncode != 0:
+                # LLM call failed, try next attempt or fall back
+                if attempt < max_retries:
+                    continue
+                return _create_single_shard(task_text)
+
+            # Parse response
+            shards = _parse_llm_sharding_response(proc.stdout)
+
+            if shards:
+                return shards
+
+            # Parsing failed, try next attempt or fall back
+            if attempt < max_retries:
+                continue
+            return _create_single_shard(task_text)
+
+        except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
+            # Timeout or other error, try next attempt or fall back
+            if attempt < max_retries:
+                continue
+            return _create_single_shard(task_text)
+
+    # Should not reach here, but fall back to be safe
+    return _create_single_shard(task_text)
+
+
+def _create_single_shard(task_text: str) -> List[Shard]:
+    """
+    Create a single shard containing the full task (fallback mode).
+
+    Args:
+        task_text: The full task text
+
+    Returns:
+        List containing a single Shard
+    """
+    return [
+        Shard(
+            id="shard-1",
+            title="Full Task",
+            goal="Complete the task as described",
+            content=task_text.strip(),
+            allowed_paths=["**"],
+        )
+    ]
 
 
 def create_shard_plan(
@@ -38,7 +257,7 @@ def create_shard_plan(
     elif role_cfg.shard_mode == "files":
         shards = _plan_shards_by_files(task_text, shard_count, role_cfg)
     elif role_cfg.shard_mode == "llm":
-        raise NotImplementedError("LLM-based sharding is not implemented in V1")
+        shards = _plan_shards_by_llm(task_text, shard_count, role_cfg)
     else:
         raise ValueError(f"Unknown shard_mode: {role_cfg.shard_mode}")
 

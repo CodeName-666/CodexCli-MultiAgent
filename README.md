@@ -39,6 +39,7 @@ python multi_agent_codex.py create-role --nl-description "Ein Code Reviewer"
 - **[Vollständige Konfiguration](docs/CONFIGURATION.md)** - Referenz aller Config-Optionen
 - **[Eigene Rollen erstellen](docs/CUSTOM_ROLES.md)** - Custom Agent-Rollen schreiben
 - **[Sharding (Parallelisierung)](docs/SHARDING.md)** - Echte parallele Agent-Ausführung
+- **[Workflow Diagrams](docs/WORKFLOWS.md)** - Mermaid flowcharts for core runtime paths
 
 **CLI-Unterkommandos (NEU):**
 
